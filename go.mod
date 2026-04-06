@@ -1,4 +1,4 @@
-module gitree
+module github.com/morizkraemer/gitree
 
 go 1.26.1
 
