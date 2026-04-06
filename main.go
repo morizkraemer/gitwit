@@ -7,10 +7,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type tickMsg time.Time
 
 // Panel indices
 const (
@@ -362,8 +365,14 @@ func (m model) panelItems(panel int) []string {
 	return nil
 }
 
+func tickCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 func (m model) Init() tea.Cmd {
-	return nil
+	return tickCmd()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -372,6 +381,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, tea.ClearScreen
+
+	case tickMsg:
+		if !m.diffMode && !m.inputMode {
+			raw := loadChanges()
+			m.changesRaw = raw
+			m.changes = buildChangeTree(raw)
+			m.branches = loadBranches()
+			m.commits = loadCommits(m.selectedBranch())
+		}
+		return m, tickCmd()
 
 	case tea.KeyMsg:
 		// Text input mode
