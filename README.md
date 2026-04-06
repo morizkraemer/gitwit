@@ -1,4 +1,4 @@
-# gitree
+# gitwit
 
 A minimal terminal UI for git — like lazygit, but only the parts you actually need.
 
@@ -14,20 +14,20 @@ A minimal terminal UI for git — like lazygit, but only the parts you actually 
 ## Install
 
 ```sh
-go install github.com/morizkraemer/gitree@latest
+go install github.com/morizkraemer/gitwit@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/morizkraemer/gitree.git
-cd gitree
-go build -o gitree .
+git clone https://github.com/morizkraemer/gitwit.git
+cd gitwit
+go build -o gitwit .
 ```
 
 ## Usage
 
-Run `gitree` inside any git repository.
+Run `gitwit` inside any git repository.
 
 ### Keybindings
 

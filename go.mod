@@ -1,4 +1,4 @@
-module github.com/morizkraemer/gitree
+module github.com/morizkraemer/gitwit
 
 go 1.26.1
 

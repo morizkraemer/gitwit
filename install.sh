@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 
-go build -o gitree .
-sudo cp gitree /usr/local/bin/gitree
-echo "gitree installed to /usr/local/bin/gitree"
+go build -o gitwit .
+sudo cp gitwit /usr/local/bin/gitwit
+echo "gitwit installed to /usr/local/bin/gitwit"

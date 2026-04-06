@@ -591,12 +591,13 @@ func (m model) View() string {
 		available = 9
 	}
 
-	changesHeight := available / 4
+	// Upper half: changes, next quarter: branches, bottom quarter: commits
+	changesHeight := available / 2
 	branchesHeight := available / 4
 	commitsHeight := available - changesHeight - branchesHeight
 
-	if changesHeight < 2 {
-		changesHeight = 2
+	if changesHeight < 3 {
+		changesHeight = 3
 	}
 	if branchesHeight < 2 {
 		branchesHeight = 2
@@ -652,6 +653,21 @@ func (m model) View() string {
 		Render(inner)
 }
 
+func truncate(s string, max int) string {
+	w := 0
+	for i, r := range s {
+		rw := 1
+		if r > 127 {
+			rw = 2
+		}
+		if w+rw > max {
+			return s[:i]
+		}
+		w += rw
+	}
+	return s
+}
+
 func (m *model) renderPanel(panel, width, height int) string {
 	items := m.panelItems(panel)
 	cursor := m.cursors[panel]
@@ -666,16 +682,15 @@ func (m *model) renderPanel(panel, width, height int) string {
 
 	var lines []string
 	for i := m.offsets[panel]; i < len(items) && i < m.offsets[panel]+height; i++ {
-		line := items[i]
+		line := truncate(items[i], width)
 		isSelected := i == cursor && panel == m.activePanel
 		isCursor := i == cursor && !isSelected
 		if isSelected {
-			// Apply text prefixes (like ● for current branch) but not color
-			plain := m.plainLine(panel, i, line)
+			plain := truncate(m.plainLine(panel, i, items[i]), width)
 			rendered := selectedStyle.Width(width).Render(plain)
 			lines = append(lines, rendered)
 		} else if isCursor {
-			plain := m.plainLine(panel, i, line)
+			plain := truncate(m.plainLine(panel, i, items[i]), width)
 			rendered := cursorStyle.Width(width).Render(plain)
 			lines = append(lines, rendered)
 		} else {
