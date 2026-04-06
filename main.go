@@ -116,10 +116,17 @@ func flattenTree(node *treeNode, prefix string, pathPrefix string, entries *[]ch
 	}
 }
 
+// branchEntry holds branch name and remote tracking info
+type branchEntry struct {
+	name   string
+	ahead  int
+	behind int
+}
+
 type model struct {
 	changes       []changeEntry
 	changesRaw    []string // raw porcelain lines for count
-	branches      []string
+	branches      []branchEntry
 	commits       []string
 	currentBranch string
 
@@ -149,55 +156,67 @@ type model struct {
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#c8c8c8")).
+			Foreground(lipgloss.Color("#d4d4d4")).
 			Background(lipgloss.Color("#3b3b5c")).
 			Padding(0, 1)
 
 	activeBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#7c7caa"))
+				BorderForeground(lipgloss.Color("#8888bb"))
 
 	inactiveBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#4a4a4a"))
+				BorderForeground(lipgloss.Color("#505050"))
 
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e0e0e0")).
-			Background(lipgloss.Color("#3b4d6b"))
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Background(lipgloss.Color("#3d5278"))
 
 	cursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8a8aaa"))
+			Foreground(lipgloss.Color("#a0a0cc"))
 
 	branchCurrentStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#7aab7a"))
+				Foreground(lipgloss.Color("#88cc88"))
 
 	statusAddedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#7aab7a"))
+				Foreground(lipgloss.Color("#88cc88"))
 
 	statusModifiedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#c8a56e"))
+				Foreground(lipgloss.Color("#ddbb66"))
 
 	statusDeletedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#b06060"))
+				Foreground(lipgloss.Color("#cc6666"))
 
 	hashStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#c8a56e"))
+			Foreground(lipgloss.Color("#ddbb66"))
 
 	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#606060"))
+			Foreground(lipgloss.Color("#787878"))
+
+	treeDirStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#8899bb"))
+
+	treeConnectorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#666688"))
 
 	diffAddStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7aab7a"))
+			Foreground(lipgloss.Color("#88cc88"))
 
 	diffDelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#b06060"))
+			Foreground(lipgloss.Color("#cc6666"))
 
 	diffHunkStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7c7caa"))
+			Foreground(lipgloss.Color("#8888bb"))
 
 	diffHeaderStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#c8c8c8"))
+			Foreground(lipgloss.Color("#d4d4d4"))
+
+	aheadStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#88cc88"))
+
+	behindStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#cc6666"))
 )
 
 func git(args ...string) []string {
@@ -225,9 +244,19 @@ func loadChanges() []string {
 	return git("status", "--porcelain")
 }
 
-func loadBranches() []string {
+func loadBranches() []branchEntry {
 	raw := git("branch", "--format=%(refname:short)")
-	return raw
+	var entries []branchEntry
+	for _, name := range raw {
+		ahead, behind := 0, 0
+		// Check if branch has an upstream
+		ab := git("rev-list", "--left-right", "--count", name+"..."+name+"@{upstream}")
+		if len(ab) > 0 {
+			fmt.Sscanf(ab[0], "%d\t%d", &ahead, &behind)
+		}
+		entries = append(entries, branchEntry{name: name, ahead: ahead, behind: behind})
+	}
+	return entries
 }
 
 func loadDiff(filePath, status string) []string {
@@ -288,7 +317,7 @@ func initialModel() model {
 	cur := currentBranch()
 	cursorIdx := 0
 	for i, b := range branches {
-		if b == cur {
+		if b.name == cur {
 			cursorIdx = i
 			break
 		}
@@ -310,7 +339,7 @@ func (m model) selectedBranch() string {
 	if len(m.branches) == 0 {
 		return ""
 	}
-	return m.branches[m.cursors[panelBranches]]
+	return m.branches[m.cursors[panelBranches]].name
 }
 
 func (m model) panelItems(panel int) []string {
@@ -322,7 +351,11 @@ func (m model) panelItems(panel int) []string {
 		}
 		return items
 	case panelBranches:
-		return m.branches
+		items := make([]string, len(m.branches))
+		for i, b := range m.branches {
+			items[i] = b.name
+		}
+		return items
 	case panelCommits:
 		return m.commits
 	}
@@ -365,7 +398,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Created & switched to " + name
 				m.branches = loadBranches()
 				for i, b := range m.branches {
-					if b == name {
+					if b.name == name {
 						m.cursors[panelBranches] = i
 						break
 					}
@@ -654,18 +687,14 @@ func (m model) View() string {
 }
 
 func truncate(s string, max int) string {
-	w := 0
-	for i, r := range s {
-		rw := 1
-		if r > 127 {
-			rw = 2
-		}
-		if w+rw > max {
-			return s[:i]
-		}
-		w += rw
+	if max <= 0 {
+		return ""
 	}
-	return s
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
 }
 
 func (m *model) renderPanel(panel, width, height int) string {
@@ -707,13 +736,32 @@ func (m *model) renderPanel(panel, width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (m model) branchDisplay(idx int) string {
+	if idx >= len(m.branches) {
+		return ""
+	}
+	b := m.branches[idx]
+	s := b.name
+	if b.ahead > 0 || b.behind > 0 {
+		s += " "
+		if b.ahead > 0 {
+			s += fmt.Sprintf("↑%d", b.ahead)
+		}
+		if b.behind > 0 {
+			s += fmt.Sprintf("↓%d", b.behind)
+		}
+	}
+	return s
+}
+
 func (m model) plainLine(panel, idx int, line string) string {
 	switch panel {
 	case panelBranches:
+		display := m.branchDisplay(idx)
 		if line == m.currentBranch {
-			return "● " + line
+			return "● " + display
 		}
-		return "  " + line
+		return "  " + display
 	case panelCommits:
 		return line
 	}
@@ -727,24 +775,43 @@ func (m model) renderLine(panel, idx int, line string, width int) string {
 			return line
 		}
 		entry := m.changes[idx]
+		// Split connector prefix from the name
+		name := entry.display
+		prefix := ""
+		if lastConn := strings.LastIndex(name, "── "); lastConn >= 0 {
+			prefix = name[:lastConn+len("── ")]
+			name = name[lastConn+len("── "):]
+		}
+		connPart := treeConnectorStyle.Render(prefix)
 		if entry.isDir {
-			return dimStyle.Render(line)
+			return connPart + treeDirStyle.Render(name)
 		}
 		status := entry.status
 		switch {
 		case strings.Contains(status, "A"), strings.Contains(status, "?"):
-			return statusAddedStyle.Render(line)
+			return connPart + statusAddedStyle.Render(name)
 		case strings.Contains(status, "D"):
-			return statusDeletedStyle.Render(line)
+			return connPart + statusDeletedStyle.Render(name)
 		default:
-			return statusModifiedStyle.Render(line)
+			return connPart + statusModifiedStyle.Render(name)
 		}
 
 	case panelBranches:
-		if line == m.currentBranch {
-			return branchCurrentStyle.Render("● " + line)
+		if idx >= len(m.branches) {
+			return line
 		}
-		return "  " + line
+		b := m.branches[idx]
+		suffix := ""
+		if b.ahead > 0 {
+			suffix += " " + aheadStyle.Render(fmt.Sprintf("↑%d", b.ahead))
+		}
+		if b.behind > 0 {
+			suffix += " " + behindStyle.Render(fmt.Sprintf("↓%d", b.behind))
+		}
+		if line == m.currentBranch {
+			return branchCurrentStyle.Render("● "+line) + suffix
+		}
+		return "  " + line + suffix
 
 	case panelCommits:
 		parts := strings.SplitN(line, " ", 2)
