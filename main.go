@@ -1141,17 +1141,59 @@ func (m model) branchDisplay(idx int) string {
 	return s
 }
 
+func statusTag(status string) string {
+	if len(status) < 2 {
+		return dimStyle.Render("?")
+	}
+	x, y := status[0], status[1]
+	// Staged status (first char)
+	if x == 'M' || x == 'A' || x == 'D' || x == 'R' || x == 'C' {
+		return branchCurrentStyle.Render(string(x))
+	}
+	// Unstaged status (second char)
+	if y == 'M' {
+		return statusModifiedStyle.Render("M")
+	}
+	if y == 'D' {
+		return statusDeletedStyle.Render("D")
+	}
+	if x == '?' {
+		return statusAddedStyle.Render("?")
+	}
+	return dimStyle.Render(string(y))
+}
+
+func statusTagPlain(status string) string {
+	if len(status) < 2 {
+		return "?"
+	}
+	x, y := status[0], status[1]
+	if x == 'M' || x == 'A' || x == 'D' || x == 'R' || x == 'C' {
+		return string(x)
+	}
+	if y == 'M' || y == 'D' {
+		return string(y)
+	}
+	if x == '?' {
+		return "?"
+	}
+	return string(y)
+}
+
 func (m model) plainLine(panel, idx int, line string) string {
 	switch panel {
 	case panelChanges:
 		if idx < len(m.changes) {
 			entry := m.changes[idx]
 			if !entry.isDir {
-				status := entry.status
-				if len(status) >= 2 && strings.TrimSpace(status[:1]) != "" && status[:1] != "?" {
-					return "● " + line
+				display := entry.display
+				tag := statusTagPlain(entry.status)
+				if lastConn := strings.LastIndex(display, "── "); lastConn >= 0 {
+					prefix := display[:lastConn+len("── ")]
+					name := display[lastConn+len("── "):]
+					return prefix + tag + " " + name
 				}
-				return "○ " + line
+				return tag + " " + display
 			}
 		}
 		return line
@@ -1185,21 +1227,16 @@ func (m model) renderLine(panel, idx int, line string, width int) string {
 		if entry.isDir {
 			return connPart + treeDirStyle.Render(name)
 		}
-		// Staged indicator
-		stageIcon := ""
+		// Status indicator (e.g. M, A, D, ?) with color
 		status := entry.status
-		if len(status) >= 2 && strings.TrimSpace(status[:1]) != "" && status[:1] != "?" {
-			stageIcon = branchCurrentStyle.Render("● ")
-		} else {
-			stageIcon = dimStyle.Render("○ ")
-		}
+		tag := statusTag(status)
 		switch {
 		case strings.Contains(status, "A"), strings.Contains(status, "?"):
-			return stageIcon + connPart + statusAddedStyle.Render(name)
+			return connPart + tag + " " + statusAddedStyle.Render(name)
 		case strings.Contains(status, "D"):
-			return stageIcon + connPart + statusDeletedStyle.Render(name)
+			return connPart + tag + " " + statusDeletedStyle.Render(name)
 		default:
-			return stageIcon + connPart + statusModifiedStyle.Render(name)
+			return connPart + tag + " " + statusModifiedStyle.Render(name)
 		}
 
 	case panelBranches:
