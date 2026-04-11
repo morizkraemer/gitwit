@@ -183,6 +183,48 @@ func (m model) renderDiffView() string {
 		Render(inner)
 }
 
+func (m model) renderBottomBar(width int) string {
+	bg := lipgloss.Color("#2d2d4a")
+	bar := lipgloss.NewStyle().Background(bg).Width(width)
+	key := func(k string) string {
+		return lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#c0c0d0")).Bold(true).Render(k)
+	}
+	label := func(l string) string {
+		return lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#787890")).Render(l)
+	}
+	sep := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#555566")).Render(" │ ")
+	dot := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#88cc88")).Render("●")
+
+	if m.inputMode {
+		prompt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#787890")).Render(m.inputPrompt)
+		value := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#d4d4d4")).Render(m.inputValue + "█")
+		return bar.Render(" " + prompt + value)
+	}
+
+	if m.statusMsg != "" {
+		status := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#d4d4d4")).Render(m.statusMsg)
+		return bar.Render(" " + status)
+	}
+
+	panelNames := [3]string{"changes", "branches", "commits"}
+	shiftKeys := [3]string{"⇧1", "⇧2", "⇧3"}
+
+	var parts []string
+	parts = append(parts, key("1-3")+" "+label("select"))
+
+	for i := 0; i < 3; i++ {
+		p := key(shiftKeys[i]) + " " + label(panelNames[i])
+		if m.showPanel[i] {
+			p += " " + dot
+		}
+		parts = append(parts, p)
+	}
+
+	parts = append(parts, key("q")+" "+label("quit"))
+
+	return bar.Render(" " + strings.Join(parts, sep))
+}
+
 func (m model) View() string {
 	if m.width == 0 {
 		return "Loading..."
@@ -196,46 +238,38 @@ func (m model) View() string {
 	contentWidth := m.width - 2
 	innerWidth := contentWidth - 4 // panel borders
 
-	// 3 titles (1 line each) + 3 panel borders (2 lines each) + 3 help lines + 3 blank lines + 1 status line + 2 outer border = 18 lines of chrome
-	available := m.height - 18
-	if available < 9 {
-		available = 9
+	// Chrome: per panel = title(1) + border(2) + help(1) = 4
+	// Separators between panels: vc - 1
+	// Bottom bar: 1, outer border: 2
+	vc := m.visibleCount()
+	chrome := vc*4 + (vc - 1) + 1 + 2
+	available := m.height - chrome
+	if available < 3 {
+		available = 3
 	}
 
-	// Upper half: changes, next quarter: branches, bottom quarter: commits
-	changesHeight := available / 2
-	branchesHeight := available / 4
-	commitsHeight := available - changesHeight - branchesHeight
-
-	if changesHeight < 3 {
-		changesHeight = 3
+	// Distribute height: first visible panel gets 50%, rest split evenly
+	visible := m.visiblePanels()
+	panelHeight := [3]int{}
+	if len(visible) == 1 {
+		panelHeight[visible[0]] = available
+	} else {
+		firstH := available / 2
+		rest := available - firstH
+		each := rest / (len(visible) - 1)
+		panelHeight[visible[0]] = firstH
+		for i := 1; i < len(visible); i++ {
+			panelHeight[visible[i]] = each
+		}
+		// give remainder to last panel
+		used := firstH + each*(len(visible)-1)
+		panelHeight[visible[len(visible)-1]] += available - used
 	}
-	if branchesHeight < 2 {
-		branchesHeight = 2
-	}
-	if commitsHeight < 2 {
-		commitsHeight = 2
-	}
-
-	changesView := m.renderPanel(panelChanges, innerWidth, changesHeight)
-	branchesView := m.renderBranchesPanel(innerWidth, branchesHeight)
-	commitsView := m.renderPanel(panelCommits, innerWidth, commitsHeight)
-
-	// Titles
-	stagedCount := 0
-	for _, line := range m.changesRaw {
-		if len(line) >= 2 && strings.TrimSpace(line[:1]) != "" && line[:1] != "?" {
-			stagedCount++
+	for i := range panelHeight {
+		if m.showPanel[i] && panelHeight[i] < 2 {
+			panelHeight[i] = 2
 		}
 	}
-	changesTitle := titleStyle.Render(fmt.Sprintf(" Changes (%d) · Staged (%d) ", len(m.changesRaw), stagedCount))
-	branchesTitle := titleStyle.Render(fmt.Sprintf(" Local (%d) │ Remote (%d) ", len(m.branches), len(m.remoteBranches)))
-
-	commitLabel := m.selectedBranch()
-	if commitLabel == "" {
-		commitLabel = "none"
-	}
-	commitsTitle := titleStyle.Render(fmt.Sprintf(" Commits · %s ", commitLabel))
 
 	borderFn := func(panel int, h int) lipgloss.Style {
 		if panel == m.activePanel {
@@ -244,34 +278,60 @@ func (m model) View() string {
 		return inactiveBorderStyle.Width(innerWidth).Height(h)
 	}
 
-	changesHelp := dimStyle.Render("  space: stage/unstage · a: stage all · c: commit · enter: diff · r: refresh")
-	branchesHelp := dimStyle.Render("  h/l: local/remote · enter: checkout · B: new · f: fetch · p: pull · P: push")
-	commitsHelp := dimStyle.Render("  j/k: navigate")
+	// Build layout sections
+	var sections []string
+	first := true
+	for _, p := range visible {
+		if !first {
+			sections = append(sections, "")
+		}
+		first = false
 
-	var statusLine string
-	if m.inputMode {
-		statusLine = dimStyle.Render("  " + m.inputPrompt + m.inputValue + "█")
-	} else if m.statusMsg != "" {
-		statusLine = "  " + m.statusMsg
-	} else {
-		statusLine = dimStyle.Render("  tab: switch panel · q: quit")
+		h := panelHeight[p]
+		switch p {
+		case panelChanges:
+			stagedCount := 0
+			for _, line := range m.changesRaw {
+				if len(line) >= 2 && strings.TrimSpace(line[:1]) != "" && line[:1] != "?" {
+					stagedCount++
+				}
+			}
+			var title string
+			if m.dirMode {
+				title = titleStyle.Render(fmt.Sprintf(" Files (%d) ", len(m.dirEntries)))
+			} else {
+				title = titleStyle.Render(fmt.Sprintf(" Changes (%d) · Staged (%d) ", len(m.changesRaw), stagedCount))
+			}
+			var help string
+			if m.dirMode {
+				help = dimStyle.Render("  enter: open/toggle · v: git changes")
+			} else {
+				help = dimStyle.Render("  space: stage/unstage · a: stage all · c: commit · enter: diff · v: files · r: refresh")
+			}
+			view := m.renderPanel(panelChanges, innerWidth, h)
+			sections = append(sections, title, borderFn(p, h).Render(view), help)
+
+		case panelBranches:
+			title := titleStyle.Render(fmt.Sprintf(" Local (%d) │ Remote (%d) ", len(m.branches), len(m.remoteBranches)))
+			help := dimStyle.Render("  h/l: local/remote · enter: checkout · B: new · f: fetch · p: pull · P: push")
+			view := m.renderBranchesPanel(innerWidth, h)
+			sections = append(sections, title, borderFn(p, h).Render(view), help)
+
+		case panelCommits:
+			commitLabel := m.selectedBranch()
+			if commitLabel == "" {
+				commitLabel = "none"
+			}
+			title := titleStyle.Render(fmt.Sprintf(" Commits · %s ", commitLabel))
+			help := dimStyle.Render("  j/k: navigate")
+			view := m.renderPanel(panelCommits, innerWidth, h)
+			sections = append(sections, title, borderFn(p, h).Render(view), help)
+		}
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left,
-		changesTitle,
-		borderFn(panelChanges, changesHeight).Render(changesView),
-		changesHelp,
-		"",
-		branchesTitle,
-		borderFn(panelBranches, branchesHeight).Render(branchesView),
-		branchesHelp,
-		"",
-		commitsTitle,
-		borderFn(panelCommits, commitsHeight).Render(commitsView),
-		commitsHelp,
-		"",
-		statusLine,
-	)
+	sections = append(sections, m.renderBottomBar(contentWidth))
+
+	inner := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
 	return outerBorderStyle.
 		Width(contentWidth).
@@ -370,18 +430,24 @@ func (m *model) renderBranchesPanel(width, height int) string {
 
 func (m *model) renderPanel(panel, width, height int) string {
 	items := m.panelItems(panel)
+
 	cursor := m.cursors[panel]
+	offset := &m.offsets[panel]
+	if panel == panelChanges && m.dirMode {
+		cursor = m.dirCursor
+		offset = &m.dirOffset
+	}
 
 	// Scroll offset
-	if cursor < m.offsets[panel] {
-		m.offsets[panel] = cursor
+	if cursor < *offset {
+		*offset = cursor
 	}
-	if cursor >= m.offsets[panel]+height {
-		m.offsets[panel] = cursor - height + 1
+	if cursor >= *offset+height {
+		*offset = cursor - height + 1
 	}
 
 	var lines []string
-	for i := m.offsets[panel]; i < len(items) && i < m.offsets[panel]+height; i++ {
+	for i := *offset; i < len(items) && i < *offset+height; i++ {
 		line := truncate(items[i], width)
 		isSelected := i == cursor && panel == m.activePanel
 		isCursor := i == cursor && !isSelected
@@ -428,6 +494,12 @@ func (m model) branchDisplay(idx int) string {
 func (m model) plainLine(panel, idx int, line string) string {
 	switch panel {
 	case panelChanges:
+		if m.dirMode {
+			if idx < len(m.dirEntries) {
+				return m.dirEntries[idx].display
+			}
+			return line
+		}
 		if idx < len(m.changes) {
 			entry := m.changes[idx]
 			if !entry.isDir {
@@ -457,6 +529,23 @@ func (m model) plainLine(panel, idx int, line string) string {
 func (m model) renderLine(panel, idx int, line string, width int) string {
 	switch panel {
 	case panelChanges:
+		if m.dirMode {
+			if idx >= len(m.dirEntries) {
+				return line
+			}
+			entry := m.dirEntries[idx]
+			name := entry.display
+			prefix := ""
+			if lastConn := strings.LastIndex(name, "─ "); lastConn >= 0 {
+				prefix = name[:lastConn+len("─ ")]
+				name = name[lastConn+len("─ "):]
+			}
+			connPart := treeConnectorStyle.Render(prefix)
+			if entry.isDir {
+				return connPart + treeDirStyle.Render(name)
+			}
+			return connPart + name
+		}
 		if idx >= len(m.changes) {
 			return line
 		}

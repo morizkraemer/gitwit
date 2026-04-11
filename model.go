@@ -39,6 +39,11 @@ type remoteBranchEntry struct {
 	branch string // e.g. "feature-x"
 }
 
+// editorFinishedMsg is sent when an external editor process exits
+type editorFinishedMsg struct {
+	err error
+}
+
 type model struct {
 	changes        []changeEntry
 	changesRaw     []string // raw porcelain lines for count
@@ -53,6 +58,16 @@ type model struct {
 	branchSub    int // 0 = local, 1 = remote
 	remoteCursor int
 	remoteOffset int
+
+	// Directory browser mode (replaces changes panel)
+	dirMode     bool
+	dirEntries  []dirEntry
+	dirExpanded map[string]bool
+	dirCursor   int
+	dirOffset   int
+
+	// Panel visibility (at least one must remain true)
+	showPanel [3]bool
 
 	// Diff preview overlay
 	diffMode   bool
@@ -81,9 +96,36 @@ func (m model) selectedBranch() string {
 	return m.branches[m.cursors[panelBranches]].name
 }
 
+func (m model) visiblePanels() []int {
+	var panels []int
+	for i, show := range m.showPanel {
+		if show {
+			panels = append(panels, i)
+		}
+	}
+	return panels
+}
+
+func (m model) visibleCount() int {
+	n := 0
+	for _, show := range m.showPanel {
+		if show {
+			n++
+		}
+	}
+	return n
+}
+
 func (m model) panelItems(panel int) []string {
 	switch panel {
 	case panelChanges:
+		if m.dirMode {
+			items := make([]string, len(m.dirEntries))
+			for i, d := range m.dirEntries {
+				items[i] = d.display
+			}
+			return items
+		}
 		items := make([]string, len(m.changes))
 		for i, c := range m.changes {
 			items[i] = c.display

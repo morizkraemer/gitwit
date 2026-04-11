@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -40,6 +41,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case editorFinishedMsg:
+		if msg.err != nil {
+			m.statusMsg = "✗ editor: " + msg.err.Error()
+		}
+		if m.dirMode {
+			m.dirEntries = buildDirTree(m.dirExpanded)
+			if m.dirCursor >= len(m.dirEntries) {
+				m.dirCursor = max(len(m.dirEntries)-1, 0)
+			}
+		}
+		raw := loadChanges()
+		m.changesRaw = raw
+		m.changes = buildChangeTree(raw)
+		return m, nil
+
 	case tickMsg:
 		if !m.diffMode && !m.inputMode {
 			m.currentBranch = currentBranch()
@@ -49,6 +65,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.branches = loadBranches()
 			m.remoteBranches = loadRemoteBranches(m.branches)
 			m.commits = loadCommits(m.selectedBranch())
+			if m.dirMode {
+				m.dirEntries = buildDirTree(m.dirExpanded)
+				if m.dirCursor >= len(m.dirEntries) {
+					m.dirCursor = max(len(m.dirEntries)-1, 0)
+				}
+			}
 		}
 		if m.statusMsg != "" {
 			if m.statusTick >= 2 {
@@ -178,18 +200,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.activePanel = (m.activePanel + 1) % 3
+			visible := m.visiblePanels()
+			for i, p := range visible {
+				if p == m.activePanel {
+					m.activePanel = visible[(i+1)%len(visible)]
+					break
+				}
+			}
 			m.statusMsg = ""
 			return m, nil
 
 		case "shift+tab":
-			m.activePanel = (m.activePanel + 2) % 3
+			visible := m.visiblePanels()
+			for i, p := range visible {
+				if p == m.activePanel {
+					m.activePanel = visible[(i+len(visible)-1)%len(visible)]
+					break
+				}
+			}
 			m.statusMsg = ""
 			return m, nil
 
 		case "enter":
 			switch m.activePanel {
 			case panelChanges:
+				if m.dirMode {
+					if len(m.dirEntries) > 0 && m.dirCursor < len(m.dirEntries) {
+						entry := m.dirEntries[m.dirCursor]
+						if entry.isDir {
+							if m.dirExpanded[entry.filePath] {
+								delete(m.dirExpanded, entry.filePath)
+							} else {
+								m.dirExpanded[entry.filePath] = true
+							}
+							m.dirEntries = buildDirTree(m.dirExpanded)
+							if m.dirCursor >= len(m.dirEntries) {
+								m.dirCursor = max(len(m.dirEntries)-1, 0)
+							}
+						} else {
+							editor := os.Getenv("EDITOR")
+							if editor == "" {
+								editor = "vim"
+							}
+							c := exec.Command(editor, entry.filePath)
+							return m, tea.ExecProcess(c, func(err error) tea.Msg {
+								return editorFinishedMsg{err}
+							})
+						}
+					}
+					return m, nil
+				}
 				if len(m.changes) > 0 {
 					entry := m.changes[m.cursors[panelChanges]]
 					if !entry.isDir {
@@ -261,6 +321,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "j", "down":
+			if m.activePanel == panelChanges && m.dirMode {
+				if m.dirCursor < len(m.dirEntries)-1 {
+					m.dirCursor++
+				}
+				return m, nil
+			}
 			if m.activePanel == panelBranches && m.branchSub == 1 {
 				if m.remoteCursor < len(m.remoteBranches)-1 {
 					m.remoteCursor++
@@ -279,6 +345,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "k", "up":
+			if m.activePanel == panelChanges && m.dirMode {
+				if m.dirCursor > 0 {
+					m.dirCursor--
+				}
+				return m, nil
+			}
 			if m.activePanel == panelBranches && m.branchSub == 1 {
 				if m.remoteCursor > 0 {
 					m.remoteCursor--
@@ -316,8 +388,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commits = loadCommits(m.selectedBranch())
 			return m, nil
 
+		case "v":
+			if m.activePanel == panelChanges {
+				m.dirMode = !m.dirMode
+				if m.dirMode {
+					if m.dirExpanded == nil {
+						m.dirExpanded = make(map[string]bool)
+					}
+					m.dirEntries = buildDirTree(m.dirExpanded)
+					m.dirCursor = 0
+					m.dirOffset = 0
+				}
+			}
+			return m, nil
+
+		case "1", "2", "3":
+			panel := int(msg.String()[0] - '1')
+			if m.showPanel[panel] {
+				m.activePanel = panel
+				m.statusMsg = ""
+			}
+			return m, nil
+
+		case "!", "@", "#":
+			panel := map[string]int{"!": 0, "@": 1, "#": 2}[msg.String()]
+			if m.showPanel[panel] && m.visibleCount() <= 1 {
+				return m, nil // don't hide the last panel
+			}
+			m.showPanel[panel] = !m.showPanel[panel]
+			if !m.showPanel[panel] && m.activePanel == panel {
+				m.activePanel = m.visiblePanels()[0]
+			}
+			return m, nil
+
 		case " ":
-			if m.activePanel == panelChanges && len(m.changes) > 0 {
+			if m.activePanel == panelChanges && !m.dirMode && len(m.changes) > 0 {
 				entry := m.changes[m.cursors[panelChanges]]
 				if !entry.isDir {
 					status := entry.status
@@ -342,7 +447,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "a":
-			if m.activePanel == panelChanges && len(m.changes) > 0 {
+			if m.activePanel == panelChanges && !m.dirMode && len(m.changes) > 0 {
 				// Stage all files
 				exec.Command("git", "add", "-A").Run()
 				raw := loadChanges()
@@ -353,7 +458,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "c":
-			if m.activePanel == panelChanges {
+			if m.activePanel == panelChanges && !m.dirMode {
 				// Check if there are staged changes
 				staged := git("diff", "--cached", "--name-only")
 				if len(staged) == 0 {

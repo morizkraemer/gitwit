@@ -12,7 +12,7 @@ func git(args ...string) []string {
 	if err != nil {
 		return nil
 	}
-	s := strings.TrimSpace(string(out))
+	s := strings.TrimRight(string(out), "\n\r")
 	if s == "" {
 		return nil
 	}
