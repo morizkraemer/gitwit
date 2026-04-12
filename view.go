@@ -144,7 +144,7 @@ func (m model) renderDiffView() string {
 	viewHeight := m.height - 4 // outer border + title + help
 
 	title := titleStyle.Render(fmt.Sprintf(" %s ", m.diffFile))
-	help := dimStyle.Render("  q/esc: close · j/k: scroll · d/u: page down/up")
+	help := dimStyle.Render("  q/esc: close · j/k: scroll · d/u: page down/up · e: open in editor")
 
 	var lines []string
 	end := m.diffScroll + viewHeight
@@ -306,7 +306,7 @@ func (m model) View() string {
 			if m.dirMode {
 				help = dimStyle.Render("  enter: open/toggle · v: git changes")
 			} else {
-				help = dimStyle.Render("  space: stage/unstage · a: stage all · c: commit · enter: diff · v: files · r: refresh")
+				help = dimStyle.Render("  space: stage/unstage · a: stage all · c: commit · enter: diff · e: edit · v: files")
 			}
 			view := m.renderPanel(panelChanges, innerWidth, h)
 			sections = append(sections, title, borderFn(p, h).Render(view), help)

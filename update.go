@@ -9,6 +9,23 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func editorName() string {
+	if e := os.Getenv("EDITOR"); e != "" {
+		return e
+	}
+	if _, err := exec.LookPath("nvim"); err == nil {
+		return "nvim"
+	}
+	return "vim"
+}
+
+func openInEditor(file string) tea.Cmd {
+	c := exec.Command(editorName(), file)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return editorFinishedMsg{err}
+	})
+}
+
 func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
@@ -191,6 +208,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.diffScroll = 0
 				}
 				return m, nil
+			case "e":
+				if m.diffFile != "" {
+					m.diffMode = false
+					return m, openInEditor(m.diffFile)
+				}
+				return m, nil
 			}
 			return m, nil
 		}
@@ -238,14 +261,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								m.dirCursor = max(len(m.dirEntries)-1, 0)
 							}
 						} else {
-							editor := os.Getenv("EDITOR")
-							if editor == "" {
-								editor = "vim"
-							}
-							c := exec.Command(editor, entry.filePath)
-							return m, tea.ExecProcess(c, func(err error) tea.Msg {
-								return editorFinishedMsg{err}
-							})
+							return m, openInEditor(entry.filePath)
 						}
 					}
 					return m, nil
@@ -376,6 +392,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "l", "right":
 			if m.activePanel == panelBranches && m.branchSub == 0 {
 				m.branchSub = 1
+			}
+			return m, nil
+
+		case "e":
+			if m.activePanel == panelChanges && len(m.changes) > 0 {
+				entry := m.changes[m.cursors[panelChanges]]
+				if !entry.isDir {
+					return m, openInEditor(entry.filePath)
+				}
 			}
 			return m, nil
 
