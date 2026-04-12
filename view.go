@@ -382,6 +382,10 @@ func (m *model) renderBranchesPanel(width, height int) string {
 			if b.behind > 0 {
 				suffix += " " + behindStyle.Render(fmt.Sprintf("↓%d", b.behind))
 			}
+			if b.mainAhead > 0 || b.mainBehind > 0 {
+				suffix += " " + aheadStyle.Render(fmt.Sprintf("⇡%d", b.mainAhead)) +
+					dimStyle.Render("⇣") + behindStyle.Render(fmt.Sprintf("%d", b.mainBehind))
+			}
 			var content string
 			if b.name == m.currentBranch {
 				content = branchCurrentStyle.Render("● "+b.name) + suffix
@@ -487,6 +491,9 @@ func (m model) branchDisplay(idx int) string {
 		if b.behind > 0 {
 			s += fmt.Sprintf("↓%d", b.behind)
 		}
+	}
+	if b.mainAhead > 0 || b.mainBehind > 0 {
+		s += fmt.Sprintf(" ⇡%d⇣%d", b.mainAhead, b.mainBehind)
 	}
 	return s
 }

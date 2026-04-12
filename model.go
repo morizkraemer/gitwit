@@ -27,9 +27,11 @@ type changeEntry struct {
 
 // branchEntry holds branch name and remote tracking info
 type branchEntry struct {
-	name   string
-	ahead  int
-	behind int
+	name      string
+	ahead     int
+	behind    int
+	mainAhead int // commits ahead of main
+	mainBehind int // commits behind main
 }
 
 // remoteBranchEntry holds a remote branch reference

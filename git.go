@@ -31,8 +31,29 @@ func loadChanges() []string {
 	return git("status", "--porcelain")
 }
 
+func mainBranch() string {
+	if exec.Command("git", "rev-parse", "--verify", "main").Run() == nil {
+		return "main"
+	}
+	if exec.Command("git", "rev-parse", "--verify", "master").Run() == nil {
+		return "master"
+	}
+	return ""
+}
+
+func commitsVsMain(mainRef, branch string) (int, int) {
+	ab := git("rev-list", "--left-right", "--count", mainRef+"..."+branch)
+	if len(ab) > 0 {
+		var behind, ahead int
+		fmt.Sscanf(ab[0], "%d\t%d", &behind, &ahead)
+		return ahead, behind
+	}
+	return 0, 0
+}
+
 func loadBranches() []branchEntry {
 	raw := git("branch", "--format=%(refname:short)")
+	main := mainBranch()
 	var entries []branchEntry
 	for _, name := range raw {
 		ahead, behind := 0, 0
@@ -41,7 +62,11 @@ func loadBranches() []branchEntry {
 		if len(ab) > 0 {
 			fmt.Sscanf(ab[0], "%d\t%d", &ahead, &behind)
 		}
-		entries = append(entries, branchEntry{name: name, ahead: ahead, behind: behind})
+		e := branchEntry{name: name, ahead: ahead, behind: behind}
+		if main != "" && name != main {
+			e.mainAhead, e.mainBehind = commitsVsMain(main, name)
+		}
+		entries = append(entries, e)
 	}
 	return entries
 }
