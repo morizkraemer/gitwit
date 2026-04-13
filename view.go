@@ -408,14 +408,13 @@ func (m model) View() string {
 			var info string
 			switch m.branchTab {
 			case 0:
-				info = fmt.Sprintf("%d branches", len(m.branches))
+				total := len(m.branches) + len(m.remoteBranches)
+				info = fmt.Sprintf("%d branches", total)
 			case 1:
-				info = fmt.Sprintf("%d remotes", len(m.remoteBranches))
-			case 2:
 				info = fmt.Sprintf("%d worktrees", len(m.worktrees))
 			}
 			tabs := renderTabBar(
-				[]string{"Local", "Remote", "Worktrees"},
+				[]string{"Branches", "Worktrees"},
 				m.branchTab,
 				info+" · v switch",
 			)
@@ -424,11 +423,8 @@ func (m model) View() string {
 			switch m.branchTab {
 			case 0:
 				help = helpBarStyle.Render(" ⏎ checkout · B new · f fetch · p pull · P push")
-				view = m.renderLocalBranches(innerWidth, contentH)
+				view = m.renderBranches(innerWidth, contentH)
 			case 1:
-				help = helpBarStyle.Render(" ⏎ checkout · f fetch · p pull · P push")
-				view = m.renderRemoteBranches(innerWidth, contentH)
-			case 2:
 				help = helpBarStyle.Render(" j/k navigate")
 				view = m.renderWorktrees(innerWidth, contentH)
 			}
@@ -453,8 +449,9 @@ func (m model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-func (m *model) renderLocalBranches(width, height int) string {
+func (m *model) renderBranches(width, height int) string {
 	isActive := m.activePanel == panelBranches && m.branchTab == 0
+	total := len(m.branches) + len(m.remoteBranches)
 
 	cursor := m.cursors[panelBranches]
 	if cursor < m.offsets[panelBranches] {
@@ -466,12 +463,12 @@ func (m *model) renderLocalBranches(width, height int) string {
 
 	upstreamStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555566"))
 
-	// Measure column widths
+	// Measure column widths for local branches
 	maxName := 0
 	maxUpstream := 0
 	maxSync := 0
 	for _, b := range m.branches {
-		nameLen := len(b.name) + 2 // prefix
+		nameLen := len(b.name) + 2
 		if nameLen > maxName {
 			maxName = nameLen
 		}
@@ -489,129 +486,122 @@ func (m *model) renderLocalBranches(width, height int) string {
 			maxSync = len(sync)
 		}
 	}
+	// Remote branch names also contribute to maxName
+	for _, rb := range m.remoteBranches {
+		nameLen := len(rb.name) + 2
+		if nameLen > maxName {
+			maxName = nameLen
+		}
+	}
 
 	var lines []string
-	for i := m.offsets[panelBranches]; i < len(m.branches) && i < m.offsets[panelBranches]+height; i++ {
-		b := m.branches[i]
+	for i := m.offsets[panelBranches]; i < total && i < m.offsets[panelBranches]+height; i++ {
 		isSelected := i == cursor && isActive
 		isCursor := i == cursor && !isSelected
 
-		prefix := "  "
-		if b.name == m.currentBranch {
-			prefix = "● "
-		}
-
-		// Build columnar layout
-		namePad := maxName - len(prefix) - len(b.name)
-		if namePad < 0 {
-			namePad = 0
-		}
-
-		upstreamPad := ""
-		if maxUpstream > 0 {
-			pad := maxUpstream - len(b.upstream)
-			if pad < 0 {
-				pad = 0
+		if i < len(m.branches) {
+			// Local branch
+			b := m.branches[i]
+			prefix := "  "
+			if b.name == m.currentBranch {
+				prefix = "● "
 			}
-			upstreamPad = strings.Repeat(" ", pad)
-		}
 
-		plainSync := ""
-		if b.ahead > 0 {
-			plainSync += fmt.Sprintf("↑%d", b.ahead)
-		}
-		if b.behind > 0 {
-			plainSync += fmt.Sprintf("↓%d", b.behind)
-		}
-		syncPad := maxSync - len(plainSync)
-		if syncPad < 0 {
-			syncPad = 0
-		}
+			namePad := maxName - len(prefix) - len(b.name)
+			if namePad < 0 {
+				namePad = 0
+			}
 
-		mainPlain := ""
-		if b.mainAhead > 0 || b.mainBehind > 0 {
-			mainPlain = fmt.Sprintf(" main +%d/-%d", b.mainAhead, b.mainBehind)
-		}
-
-		if isSelected || isCursor {
-			plain := prefix + b.name + strings.Repeat(" ", namePad)
+			upstreamPad := ""
 			if maxUpstream > 0 {
-				plain += " " + b.upstream + upstreamPad
+				pad := maxUpstream - len(b.upstream)
+				if pad < 0 {
+					pad = 0
+				}
+				upstreamPad = strings.Repeat(" ", pad)
 			}
-			if maxSync > 0 {
-				plain += " " + plainSync + strings.Repeat(" ", syncPad)
-			}
-			plain += mainPlain
-			plain = truncate(plain, width)
-			if isSelected {
-				lines = append(lines, selectedStyle.Width(width).Render(plain))
-			} else {
-				lines = append(lines, cursorStyle.Width(width).Render(plain))
-			}
-			continue
-		}
 
-		// Styled version
-		var nameCol string
-		if b.name == m.currentBranch {
-			nameCol = branchCurrentStyle.Render(prefix+b.name) + strings.Repeat(" ", namePad)
-		} else {
-			nameCol = prefix + b.name + strings.Repeat(" ", namePad)
-		}
-
-		upstreamCol := ""
-		if maxUpstream > 0 {
-			upstreamCol = " " + upstreamStyle.Render(b.upstream) + upstreamPad
-		}
-
-		syncCol := ""
-		if maxSync > 0 {
-			s := ""
+			plainSync := ""
 			if b.ahead > 0 {
-				s += aheadStyle.Render(fmt.Sprintf("↑%d", b.ahead))
+				plainSync += fmt.Sprintf("↑%d", b.ahead)
 			}
 			if b.behind > 0 {
-				s += behindStyle.Render(fmt.Sprintf("↓%d", b.behind))
+				plainSync += fmt.Sprintf("↓%d", b.behind)
 			}
-			syncCol = " " + s + strings.Repeat(" ", syncPad)
-		}
+			syncPad := maxSync - len(plainSync)
+			if syncPad < 0 {
+				syncPad = 0
+			}
 
-		mainCol := ""
-		if b.mainAhead > 0 || b.mainBehind > 0 {
-			mainCol = " " + dimStyle.Render("main") + " " +
-				aheadStyle.Render(fmt.Sprintf("+%d", b.mainAhead)) +
-				dimStyle.Render("/") +
-				behindStyle.Render(fmt.Sprintf("-%d", b.mainBehind))
-		}
+			mainPlain := ""
+			if b.mainAhead > 0 || b.mainBehind > 0 {
+				mainPlain = fmt.Sprintf(" main +%d/-%d", b.mainAhead, b.mainBehind)
+			}
 
-		content := nameCol + upstreamCol + syncCol + mainCol
-		lines = append(lines, fitWidth(content, width))
-	}
-	for len(lines) < height {
-		lines = append(lines, strings.Repeat(" ", width))
-	}
-	return strings.Join(lines, "\n")
-}
+			if isSelected || isCursor {
+				plain := prefix + b.name + strings.Repeat(" ", namePad)
+				if maxUpstream > 0 {
+					plain += " " + b.upstream + upstreamPad
+				}
+				if maxSync > 0 {
+					plain += " " + plainSync + strings.Repeat(" ", syncPad)
+				}
+				plain += mainPlain
+				plain = truncate(plain, width)
+				if isSelected {
+					lines = append(lines, selectedStyle.Width(width).Render(plain))
+				} else {
+					lines = append(lines, cursorStyle.Width(width).Render(plain))
+				}
+			} else {
+				var nameCol string
+				if b.name == m.currentBranch {
+					nameCol = branchCurrentStyle.Render(prefix+b.name) + strings.Repeat(" ", namePad)
+				} else {
+					nameCol = prefix + b.name + strings.Repeat(" ", namePad)
+				}
 
-func (m *model) renderRemoteBranches(width, height int) string {
-	isActive := m.activePanel == panelBranches && m.branchTab == 1
+				upstreamCol := ""
+				if maxUpstream > 0 {
+					upstreamCol = " " + upstreamStyle.Render(b.upstream) + upstreamPad
+				}
 
-	var lines []string
-	if m.remoteCursor < m.remoteOffset {
-		m.remoteOffset = m.remoteCursor
-	}
-	if m.remoteCursor >= m.remoteOffset+height {
-		m.remoteOffset = m.remoteCursor - height + 1
-	}
-	for i := m.remoteOffset; i < len(m.remoteBranches) && i < m.remoteOffset+height; i++ {
-		rb := m.remoteBranches[i]
-		isSelected := i == m.remoteCursor && isActive
-		plain := truncate("  "+rb.name, width)
-		if isSelected {
-			lines = append(lines, selectedStyle.Width(width).Render(plain))
+				syncCol := ""
+				if maxSync > 0 {
+					s := ""
+					if b.ahead > 0 {
+						s += aheadStyle.Render(fmt.Sprintf("↑%d", b.ahead))
+					}
+					if b.behind > 0 {
+						s += behindStyle.Render(fmt.Sprintf("↓%d", b.behind))
+					}
+					syncCol = " " + s + strings.Repeat(" ", syncPad)
+				}
+
+				mainCol := ""
+				if b.mainAhead > 0 || b.mainBehind > 0 {
+					mainCol = " " + dimStyle.Render("main") + " " +
+						aheadStyle.Render(fmt.Sprintf("+%d", b.mainAhead)) +
+						dimStyle.Render("/") +
+						behindStyle.Render(fmt.Sprintf("-%d", b.mainBehind))
+				}
+
+				content := nameCol + upstreamCol + syncCol + mainCol
+				lines = append(lines, fitWidth(content, width))
+			}
 		} else {
-			styled := "  " + dimStyle.Render(rb.remote+"/") + rb.branch
-			lines = append(lines, fitWidth(styled, width))
+			// Remote-only branch
+			ri := i - len(m.branches)
+			rb := m.remoteBranches[ri]
+			plain := truncate("  "+rb.name, width)
+			if isSelected {
+				lines = append(lines, selectedStyle.Width(width).Render(plain))
+			} else if isCursor {
+				lines = append(lines, cursorStyle.Width(width).Render(plain))
+			} else {
+				styled := "  " + dimStyle.Render(rb.remote+"/") + rb.branch
+				lines = append(lines, fitWidth(styled, width))
+			}
 		}
 	}
 	for len(lines) < height {
@@ -621,7 +611,7 @@ func (m *model) renderRemoteBranches(width, height int) string {
 }
 
 func (m *model) renderWorktrees(width, height int) string {
-	isActive := m.activePanel == panelBranches && m.branchTab == 2
+	isActive := m.activePanel == panelBranches && m.branchTab == 1
 
 	var lines []string
 	if m.worktreeCursor < m.worktreeOffset {

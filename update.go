@@ -344,9 +344,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case panelBranches:
 				if m.branchTab == 1 {
+					// Worktree: show path in status
+					if len(m.worktrees) > 0 && m.worktreeCursor < len(m.worktrees) {
+						wt := m.worktrees[m.worktreeCursor]
+						m.statusMsg = "Worktree: " + wt.path
+					}
+					return m, nil
+				}
+				idx := m.cursors[panelBranches]
+				if idx >= len(m.branches) {
 					// Remote branch: checkout as local tracking branch
-					if len(m.remoteBranches) > 0 && m.remoteCursor < len(m.remoteBranches) {
-						rb := m.remoteBranches[m.remoteCursor]
+					ri := idx - len(m.branches)
+					if ri < len(m.remoteBranches) {
+						rb := m.remoteBranches[ri]
 						cmd := exec.Command("git", "checkout", "-b", rb.branch, "--track", rb.name)
 						out, err := cmd.CombinedOutput()
 						if err != nil {
@@ -363,26 +373,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = "Checked out " + rb.branch + " from " + rb.name
 						m.branches = loadBranches()
 						m.remoteBranches = loadRemoteBranches(m.branches)
-			m.worktrees = loadWorktrees()
+						m.worktrees = loadWorktrees()
 						for i, b := range m.branches {
 							if b.name == rb.branch {
 								m.cursors[panelBranches] = i
 								break
 							}
 						}
-						m.branchTab = 0
 						raw := loadChanges()
 						m.changesRaw = raw
 						m.changes = buildChangeTree(raw)
 						m.commits = loadCommits(m.selectedBranch())
-					}
-					return m, nil
-				}
-				if m.branchTab == 2 {
-					// Worktree: cd into it (show path in status)
-					if len(m.worktrees) > 0 && m.worktreeCursor < len(m.worktrees) {
-						wt := m.worktrees[m.worktreeCursor]
-						m.statusMsg = "Worktree: " + wt.path
 					}
 					return m, nil
 				}
@@ -398,13 +399,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.currentBranch = target
 				m.statusMsg = "Switched to " + target
-				// Reload everything
 				raw := loadChanges()
 				m.changesRaw = raw
 				m.changes = buildChangeTree(raw)
 				m.branches = loadBranches()
 				m.remoteBranches = loadRemoteBranches(m.branches)
-			m.worktrees = loadWorktrees()
+				m.worktrees = loadWorktrees()
 				m.commits = loadCommits(m.selectedBranch())
 				return m, nil
 			}
@@ -418,25 +418,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == panelBranches && m.branchTab == 1 {
-				if m.remoteCursor < len(m.remoteBranches)-1 {
-					m.remoteCursor++
+				if m.worktreeCursor < len(m.worktrees)-1 {
+					m.worktreeCursor++
 				}
 				return m, nil
 			}
-			if m.activePanel == panelBranches && m.branchTab == 2 {
-				if m.worktreeCursor < len(m.worktrees)-1 {
-					m.worktreeCursor++
+			if m.activePanel == panelBranches && m.branchTab == 0 {
+				total := len(m.branches) + len(m.remoteBranches)
+				if m.cursors[panelBranches] < total-1 {
+					m.cursors[panelBranches]++
+				}
+				if m.cursors[panelBranches] < len(m.branches) {
+					m.commits = loadCommits(m.selectedBranch())
+					m.cursors[panelCommits] = 0
+					m.offsets[panelCommits] = 0
 				}
 				return m, nil
 			}
 			items := m.panelItems(m.activePanel)
 			if m.cursors[m.activePanel] < len(items)-1 {
 				m.cursors[m.activePanel]++
-			}
-			if m.activePanel == panelBranches {
-				m.commits = loadCommits(m.selectedBranch())
-				m.cursors[panelCommits] = 0
-				m.offsets[panelCommits] = 0
 			}
 			return m, nil
 
@@ -448,14 +449,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == panelBranches && m.branchTab == 1 {
-				if m.remoteCursor > 0 {
-					m.remoteCursor--
+				if m.worktreeCursor > 0 {
+					m.worktreeCursor--
 				}
 				return m, nil
 			}
-			if m.activePanel == panelBranches && m.branchTab == 2 {
-				if m.worktreeCursor > 0 {
-					m.worktreeCursor--
+			if m.activePanel == panelBranches && m.branchTab == 0 {
+				if m.cursors[panelBranches] > 0 {
+					m.cursors[panelBranches]--
+				}
+				if m.cursors[panelBranches] < len(m.branches) {
+					m.commits = loadCommits(m.selectedBranch())
+					m.cursors[panelCommits] = 0
+					m.offsets[panelCommits] = 0
 				}
 				return m, nil
 			}
@@ -501,7 +507,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dirOffset = 0
 				}
 			} else if m.activePanel == panelBranches {
-				m.branchTab = (m.branchTab + 1) % 3
+				m.branchTab = (m.branchTab + 1) % 2
 			}
 			return m, nil
 
