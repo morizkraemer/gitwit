@@ -74,10 +74,35 @@ var (
 	behindStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#cc6666"))
 
-	outerBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#5a5a7a"))
+	helpBarStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#606080"))
+
+	activeTabStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#d4d4d4")).
+			Background(lipgloss.Color("#3b3b5c")).
+			Padding(0, 1)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#606080")).
+				Padding(0, 1)
 )
+
+func renderTabBar(tabs []string, active int, info string) string {
+	var parts []string
+	for i, tab := range tabs {
+		if i == active {
+			parts = append(parts, activeTabStyle.Render(tab))
+		} else {
+			parts = append(parts, inactiveTabStyle.Render(tab))
+		}
+	}
+	bar := strings.Join(parts, "")
+	if info != "" {
+		bar += " " + dimStyle.Render(info)
+	}
+	return bar
+}
 
 func truncate(s string, max int) string {
 	if max <= 0 {
@@ -140,11 +165,11 @@ func statusTagPlain(status string) string {
 }
 
 func (m model) renderDiffView() string {
-	contentWidth := m.width - 2
-	viewHeight := m.height - 4 // outer border + title + help
+	contentWidth := m.width - 2 // border
+	viewHeight := m.height - 4 // title + border + help inside
 
 	title := titleStyle.Render(fmt.Sprintf(" %s ", m.diffFile))
-	help := dimStyle.Render("  q/esc: close · j/k: scroll · d/u: page down/up · e: open in editor")
+	help := helpBarStyle.Render(" q/esc close · j/k scroll · d/u page · e edit")
 
 	var lines []string
 	end := m.diffScroll + viewHeight
@@ -153,7 +178,6 @@ func (m model) renderDiffView() string {
 	}
 	for i := m.diffScroll; i < end; i++ {
 		line := m.diffLines[i]
-		// Truncate to width
 		if len(line) > contentWidth-2 {
 			line = line[:contentWidth-2]
 		}
@@ -175,30 +199,33 @@ func (m model) renderDiffView() string {
 	}
 
 	content := strings.Join(lines, "\n")
+	inner := content + "\n" + fitWidth(help, contentWidth)
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, title, content, help)
-	return outerBorderStyle.
-		Width(contentWidth).
-		Height(m.height - 2).
-		Render(inner)
+	return lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		activeBorderStyle.Width(contentWidth).Height(viewHeight+1).Render(inner),
+	)
 }
 
 func (m *model) renderMdView() string {
-	contentWidth := m.width - 2
-	viewHeight := m.height - 4
+	contentWidth := m.width - 2 // border
+	viewHeight := m.height - 4 // title + border + help inside
 
 	title := titleStyle.Render(fmt.Sprintf(" %s ", m.mdFile))
-	help := dimStyle.Render("  q/esc: close · j/k: navigate · d/u: page down/up · e: open in editor")
+	help := helpBarStyle.Render(" q/esc close · j/k navigate · d/u page · e edit")
 
 	if m.mdLines == nil {
 		loading := dimStyle.Render("  Loading...")
 		var pad []string
-		for i := 0; i < viewHeight-1; i++ {
+		for i := 0; i < viewHeight; i++ {
 			pad = append(pad, "")
 		}
 		content := strings.Join(append([]string{loading}, pad...), "\n")
-		inner := lipgloss.JoinVertical(lipgloss.Left, title, content, help)
-		return outerBorderStyle.Width(contentWidth).Height(m.height - 2).Render(inner)
+		inner := content + "\n" + fitWidth(help, contentWidth)
+		return lipgloss.JoinVertical(lipgloss.Left,
+			title,
+			activeBorderStyle.Width(contentWidth).Height(viewHeight+1).Render(inner),
+		)
 	}
 
 	// Viewport follows cursor
@@ -219,7 +246,7 @@ func (m *model) renderMdView() string {
 	for i := m.mdOffset; i < end; i++ {
 		line := m.mdLines[i]
 		if i == m.mdCursor {
-			padWidth := contentWidth - 2 - lipgloss.Width(line) - 2 // -2 for markers
+			padWidth := contentWidth - 2 - lipgloss.Width(line) - 2
 			if padWidth < 0 {
 				padWidth = 0
 			}
@@ -233,11 +260,12 @@ func (m *model) renderMdView() string {
 	}
 
 	content := strings.Join(lines, "\n")
-	inner := lipgloss.JoinVertical(lipgloss.Left, title, content, help)
-	return outerBorderStyle.
-		Width(contentWidth).
-		Height(m.height - 2).
-		Render(inner)
+	inner := content + "\n" + fitWidth(help, contentWidth)
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		activeBorderStyle.Width(contentWidth).Height(viewHeight+1).Render(inner),
+	)
 }
 
 func (m model) renderBottomBar(width int) string {
@@ -295,15 +323,13 @@ func (m model) View() string {
 		return m.renderMdView()
 	}
 
-	// Outer border eats 2 cols and 2 rows
-	contentWidth := m.width - 2
-	innerWidth := contentWidth - 4 // panel borders
+	contentWidth := m.width
+	innerWidth := contentWidth - 2 // panel borders
 
-	// Chrome: per panel = title(1) + border(2) + help(1) = 4
-	// Separators between panels: vc - 1
-	// Bottom bar: 1, outer border: 2
+	// Chrome: per panel = title(1) + border(2) + helpInside(1) = 4
+	// Bottom bar: 1
 	vc := m.visibleCount()
-	chrome := vc*4 + (vc - 1) + 1 + 2
+	chrome := vc*4 + 1
 	available := m.height - chrome
 	if available < 3 {
 		available = 3
@@ -322,7 +348,6 @@ func (m model) View() string {
 		for i := 1; i < len(visible); i++ {
 			panelHeight[visible[i]] = each
 		}
-		// give remainder to last panel
 		used := firstH + each*(len(visible)-1)
 		panelHeight[visible[len(visible)-1]] += available - used
 	}
@@ -341,14 +366,14 @@ func (m model) View() string {
 
 	// Build layout sections
 	var sections []string
-	first := true
 	for _, p := range visible {
-		if !first {
-			sections = append(sections, "")
-		}
-		first = false
-
 		h := panelHeight[p]
+		// Content gets h-1 lines, last line is help
+		contentH := h - 1
+		if contentH < 1 {
+			contentH = 1
+		}
+
 		switch p {
 		case panelChanges:
 			stagedCount := 0
@@ -357,72 +382,81 @@ func (m model) View() string {
 					stagedCount++
 				}
 			}
-			var title string
+			activeTab := 0
 			if m.dirMode {
-				title = titleStyle.Render(fmt.Sprintf(" Files (%d) ", len(m.dirEntries)))
-			} else {
-				title = titleStyle.Render(fmt.Sprintf(" Changes (%d) · Staged (%d) ", len(m.changesRaw), stagedCount))
+				activeTab = 1
 			}
+			tabs := renderTabBar(
+				[]string{
+					fmt.Sprintf("Changes (%d/%d)", stagedCount, len(m.changesRaw)),
+					fmt.Sprintf("Files (%d)", len(m.dirEntries)),
+				},
+				activeTab,
+				"v switch",
+			)
 			var help string
 			if m.dirMode {
-				help = dimStyle.Render("  enter: open/toggle · v: git changes")
+				help = helpBarStyle.Render(" ⏎ open/toggle")
 			} else {
-				help = dimStyle.Render("  space: stage/unstage · a: stage all · c: commit · enter: diff · e: edit · v: files")
+				help = helpBarStyle.Render(" spc stage · a all · c commit · ⏎ diff · e edit")
 			}
-			view := m.renderPanel(panelChanges, innerWidth, h)
-			sections = append(sections, title, borderFn(p, h).Render(view), help)
+			view := m.renderPanel(panelChanges, innerWidth, contentH)
+			content := view + "\n" + fitWidth(help, innerWidth)
+			sections = append(sections, tabs, borderFn(p, h).Render(content))
 
 		case panelBranches:
-			var title string
-			if m.showRemote {
-				title = titleStyle.Render(fmt.Sprintf(" Local (%d) │ Remote (%d) ", len(m.branches), len(m.remoteBranches)))
-			} else {
-				title = titleStyle.Render(fmt.Sprintf(" Branches (%d) ", len(m.branches)))
+			var info string
+			switch m.branchTab {
+			case 0:
+				info = fmt.Sprintf("%d branches", len(m.branches))
+			case 1:
+				info = fmt.Sprintf("%d remotes", len(m.remoteBranches))
+			case 2:
+				info = fmt.Sprintf("%d worktrees", len(m.worktrees))
 			}
-			help := dimStyle.Render("  h/l: local/remote · enter: checkout · B: new · R: remote · f: fetch · p: pull · P: push")
-			view := m.renderBranchesPanel(innerWidth, h)
-			sections = append(sections, title, borderFn(p, h).Render(view), help)
+			tabs := renderTabBar(
+				[]string{"Local", "Remote", "Worktrees"},
+				m.branchTab,
+				info+" · v switch",
+			)
+			var help string
+			var view string
+			switch m.branchTab {
+			case 0:
+				help = helpBarStyle.Render(" ⏎ checkout · B new · f fetch · p pull · P push")
+				view = m.renderLocalBranches(innerWidth, contentH)
+			case 1:
+				help = helpBarStyle.Render(" ⏎ checkout · f fetch · p pull · P push")
+				view = m.renderRemoteBranches(innerWidth, contentH)
+			case 2:
+				help = helpBarStyle.Render(" j/k navigate")
+				view = m.renderWorktrees(innerWidth, contentH)
+			}
+			content := view + "\n" + fitWidth(help, innerWidth)
+			sections = append(sections, tabs, borderFn(p, h).Render(content))
 
 		case panelCommits:
 			commitLabel := m.selectedBranch()
 			if commitLabel == "" {
 				commitLabel = "none"
 			}
-			title := titleStyle.Render(fmt.Sprintf(" Commits · %s ", commitLabel))
-			help := dimStyle.Render("  j/k: navigate")
-			view := m.renderPanel(panelCommits, innerWidth, h)
-			sections = append(sections, title, borderFn(p, h).Render(view), help)
+			tabs := renderTabBar([]string{"Commits"}, 0, commitLabel)
+			help := helpBarStyle.Render(" j/k navigate")
+			view := m.renderPanel(panelCommits, innerWidth, contentH)
+			content := view + "\n" + fitWidth(help, innerWidth)
+			sections = append(sections, tabs, borderFn(p, h).Render(content))
 		}
 	}
 
 	sections = append(sections, m.renderBottomBar(contentWidth))
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	return outerBorderStyle.
-		Width(contentWidth).
-		Height(m.height - 2).
-		Render(inner)
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-func (m *model) renderBranchesPanel(width, height int) string {
-	isActive := m.activePanel == panelBranches
-	var leftWidth, rightWidth int
-	if m.showRemote {
-		leftWidth = width / 2
-		rightWidth = width - leftWidth - 1 // -1 for separator
-		if rightWidth < 1 {
-			rightWidth = 1
-		}
-	} else {
-		leftWidth = width
-	}
-	if leftWidth < 1 {
-		leftWidth = 1
-	}
+func (m *model) renderLocalBranches(width, height int) string {
+	isActive := m.activePanel == panelBranches && m.branchTab == 0
 
-	// Render local branches (left side)
-	var leftLines []string
+	var lines []string
 	cursor := m.cursors[panelBranches]
 	if cursor < m.offsets[panelBranches] {
 		m.offsets[panelBranches] = cursor
@@ -432,20 +466,19 @@ func (m *model) renderBranchesPanel(width, height int) string {
 	}
 	for i := m.offsets[panelBranches]; i < len(m.branches) && i < m.offsets[panelBranches]+height; i++ {
 		b := m.branches[i]
-		isSelected := i == cursor && isActive && m.branchSub == 0
+		isSelected := i == cursor && isActive
 		isCursor := i == cursor && !isSelected
 		display := m.branchDisplay(i)
 		prefix := "  "
 		if b.name == m.currentBranch {
 			prefix = "● "
 		}
-		plain := truncate(prefix+display, leftWidth)
+		plain := truncate(prefix+display, width)
 		if isSelected {
-			leftLines = append(leftLines, selectedStyle.Width(leftWidth).Render(plain))
+			lines = append(lines, selectedStyle.Width(width).Render(plain))
 		} else if isCursor {
-			leftLines = append(leftLines, cursorStyle.Width(leftWidth).Render(plain))
+			lines = append(lines, cursorStyle.Width(width).Render(plain))
 		} else {
-			// Build styled version
 			suffix := ""
 			if b.ahead > 0 {
 				suffix += " " + aheadStyle.Render(fmt.Sprintf("↑%d", b.ahead))
@@ -463,19 +496,19 @@ func (m *model) renderBranchesPanel(width, height int) string {
 			} else {
 				content = "  " + b.name + suffix
 			}
-			leftLines = append(leftLines, fitWidth(content, leftWidth))
+			lines = append(lines, fitWidth(content, width))
 		}
 	}
-	for len(leftLines) < height {
-		leftLines = append(leftLines, strings.Repeat(" ", leftWidth))
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", width))
 	}
+	return strings.Join(lines, "\n")
+}
 
-	if !m.showRemote {
-		return strings.Join(leftLines, "\n")
-	}
+func (m *model) renderRemoteBranches(width, height int) string {
+	isActive := m.activePanel == panelBranches && m.branchTab == 1
 
-	// Render remote branches (right side)
-	var rightLines []string
+	var lines []string
 	if m.remoteCursor < m.remoteOffset {
 		m.remoteOffset = m.remoteCursor
 	}
@@ -484,26 +517,62 @@ func (m *model) renderBranchesPanel(width, height int) string {
 	}
 	for i := m.remoteOffset; i < len(m.remoteBranches) && i < m.remoteOffset+height; i++ {
 		rb := m.remoteBranches[i]
-		isSelected := i == m.remoteCursor && isActive && m.branchSub == 1
-		plain := truncate("  "+rb.name, rightWidth)
+		isSelected := i == m.remoteCursor && isActive
+		plain := truncate("  "+rb.name, width)
 		if isSelected {
-			rightLines = append(rightLines, selectedStyle.Width(rightWidth).Render(plain))
+			lines = append(lines, selectedStyle.Width(width).Render(plain))
 		} else {
 			styled := "  " + dimStyle.Render(rb.remote+"/") + rb.branch
-			rightLines = append(rightLines, fitWidth(styled, rightWidth))
+			lines = append(lines, fitWidth(styled, width))
 		}
 	}
-	for len(rightLines) < height {
-		rightLines = append(rightLines, strings.Repeat(" ", rightWidth))
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", width))
 	}
+	return strings.Join(lines, "\n")
+}
 
-	// Combine left and right with separator
-	sep := dimStyle.Render("│")
+func (m *model) renderWorktrees(width, height int) string {
+	isActive := m.activePanel == panelBranches && m.branchTab == 2
+
 	var lines []string
-	for i := 0; i < height; i++ {
-		lines = append(lines, leftLines[i]+sep+rightLines[i])
+	if m.worktreeCursor < m.worktreeOffset {
+		m.worktreeOffset = m.worktreeCursor
 	}
-
+	if m.worktreeCursor >= m.worktreeOffset+height {
+		m.worktreeOffset = m.worktreeCursor - height + 1
+	}
+	for i := m.worktreeOffset; i < len(m.worktrees) && i < m.worktreeOffset+height; i++ {
+		wt := m.worktrees[i]
+		isSelected := i == m.worktreeCursor && isActive
+		label := wt.branch
+		if label == "" {
+			label = wt.head
+		}
+		if wt.bare {
+			label = "(bare)"
+		}
+		detail := dimStyle.Render(" " + wt.path)
+		prefix := "  "
+		if wt.branch == m.currentBranch {
+			prefix = "● "
+		}
+		plain := truncate(prefix+label+" "+wt.path, width)
+		if isSelected {
+			lines = append(lines, selectedStyle.Width(width).Render(plain))
+		} else {
+			var content string
+			if wt.branch == m.currentBranch {
+				content = branchCurrentStyle.Render("● "+label) + detail
+			} else {
+				content = "  " + label + detail
+			}
+			lines = append(lines, fitWidth(content, width))
+		}
+	}
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
 	return strings.Join(lines, "\n")
 }
 

@@ -41,6 +41,14 @@ type remoteBranchEntry struct {
 	branch string // e.g. "feature-x"
 }
 
+// worktreeEntry holds a git worktree
+type worktreeEntry struct {
+	path   string // absolute path
+	branch string // branch checked out
+	bare   bool   // is bare repo
+	head   string // short commit hash
+}
+
 // editorFinishedMsg is sent when an external editor process exits
 type editorFinishedMsg struct {
 	err error
@@ -64,10 +72,12 @@ type model struct {
 	activePanel  int
 	cursors      [3]int
 	offsets      [3]int
-	branchSub    int // 0 = local, 1 = remote
-	showRemote   bool
+	branchTab    int // 0=local, 1=remote, 2=worktree
 	remoteCursor int
 	remoteOffset int
+	worktrees       []worktreeEntry
+	worktreeCursor  int
+	worktreeOffset  int
 
 	// Directory browser mode (replaces changes panel)
 	dirMode     bool
@@ -110,7 +120,11 @@ func (m model) selectedBranch() string {
 	if len(m.branches) == 0 {
 		return ""
 	}
-	return m.branches[m.cursors[panelBranches]].name
+	idx := m.cursors[panelBranches]
+	if idx >= len(m.branches) {
+		idx = len(m.branches) - 1
+	}
+	return m.branches[idx].name
 }
 
 func (m model) visiblePanels() []int {

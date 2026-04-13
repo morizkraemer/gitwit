@@ -101,6 +101,38 @@ func loadRemoteBranches(localBranches []branchEntry) []remoteBranchEntry {
 	return entries
 }
 
+func loadWorktrees() []worktreeEntry {
+	lines := git("worktree", "list", "--porcelain")
+	var entries []worktreeEntry
+	var current worktreeEntry
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			current = worktreeEntry{path: strings.TrimPrefix(line, "worktree ")}
+		case strings.HasPrefix(line, "HEAD "):
+			h := strings.TrimPrefix(line, "HEAD ")
+			if len(h) > 7 {
+				h = h[:7]
+			}
+			current.head = h
+		case strings.HasPrefix(line, "branch "):
+			ref := strings.TrimPrefix(line, "branch ")
+			current.branch = strings.TrimPrefix(ref, "refs/heads/")
+		case line == "bare":
+			current.bare = true
+		case line == "":
+			if current.path != "" {
+				entries = append(entries, current)
+			}
+			current = worktreeEntry{}
+		}
+	}
+	if current.path != "" {
+		entries = append(entries, current)
+	}
+	return entries
+}
+
 func loadDiff(filePath, status string) []string {
 	var args []string
 	if strings.Contains(status, "?") {
