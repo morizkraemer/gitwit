@@ -88,7 +88,7 @@ var (
 				Padding(0, 1)
 )
 
-func renderTabBar(tabs []string, active int, info string) string {
+func renderTabBar(tabs []string, active int, info string, width int, globalHints string) string {
 	var parts []string
 	for i, tab := range tabs {
 		if i == active {
@@ -97,11 +97,16 @@ func renderTabBar(tabs []string, active int, info string) string {
 			parts = append(parts, inactiveTabStyle.Render(tab))
 		}
 	}
-	bar := strings.Join(parts, "")
+	left := strings.Join(parts, "")
 	if info != "" {
-		bar += " " + dimStyle.Render(info)
+		left += " " + dimStyle.Render(info)
 	}
-	return bar
+	right := dimStyle.Render(globalHints)
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func truncate(s string, max int) string {
@@ -271,14 +276,6 @@ func (m *model) renderMdView() string {
 func (m model) renderBottomBar(width int) string {
 	bg := lipgloss.Color("#2d2d4a")
 	bar := lipgloss.NewStyle().Background(bg).Width(width)
-	key := func(k string) string {
-		return lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#c0c0d0")).Bold(true).Render(k)
-	}
-	label := func(l string) string {
-		return lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#787890")).Render(l)
-	}
-	sep := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#555566")).Render(" │ ")
-	dot := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#88cc88")).Render("●")
 
 	if m.inputMode {
 		prompt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#787890")).Render(m.inputPrompt)
@@ -291,23 +288,8 @@ func (m model) renderBottomBar(width int) string {
 		return bar.Render(" " + status)
 	}
 
-	panelNames := [3]string{"changes", "branches", "commits"}
-	shiftKeys := [3]string{"⇧1", "⇧2", "⇧3"}
-
-	var parts []string
-	parts = append(parts, key("1-3")+" "+label("select"))
-
-	for i := 0; i < 3; i++ {
-		p := key(shiftKeys[i]) + " " + label(panelNames[i])
-		if m.showPanel[i] {
-			p += " " + dot
-		}
-		parts = append(parts, p)
-	}
-
-	parts = append(parts, key("q")+" "+label("quit"))
-
-	return bar.Render(" " + strings.Join(parts, sep))
+	quit := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#787890")).Render("q quit")
+	return bar.Render(" " + quit)
 }
 
 func (m model) View() string {
@@ -326,10 +308,10 @@ func (m model) View() string {
 	contentWidth := m.width
 	innerWidth := contentWidth - 2 // panel borders
 
-	// Chrome: per panel = title(1) + border(2) + helpInside(1) = 4
-	// Bottom bar: 1
+	// Chrome: per panel = title(1) + border(2) = 3; help is inside border height
+	// Bottom bar: always 1 (reserved for status/input)
 	vc := m.visibleCount()
-	chrome := vc*4 + 1
+	chrome := vc*3 + 1
 	available := m.height - chrome
 	if available < 3 {
 		available = 3
@@ -365,8 +347,10 @@ func (m model) View() string {
 	}
 
 	// Build layout sections
+	panelKeys := [3]string{"1 select · ! toggle", "2 select · @ toggle", "3 select · # toggle"}
 	var sections []string
 	for _, p := range visible {
+		hints := panelKeys[p]
 		h := panelHeight[p]
 		// Content gets h-1 lines, last line is help
 		contentH := h - 1
@@ -393,6 +377,8 @@ func (m model) View() string {
 				},
 				activeTab,
 				"v switch",
+				contentWidth,
+				hints,
 			)
 			var help string
 			if m.dirMode {
@@ -405,18 +391,16 @@ func (m model) View() string {
 			sections = append(sections, tabs, borderFn(p, h).Render(content))
 
 		case panelBranches:
-			var info string
-			switch m.branchTab {
-			case 0:
-				total := len(m.branches) + len(m.remoteBranches)
-				info = fmt.Sprintf("%d branches", total)
-			case 1:
-				info = fmt.Sprintf("%d worktrees", len(m.worktrees))
-			}
+			total := len(m.branches) + len(m.remoteBranches)
 			tabs := renderTabBar(
-				[]string{"Branches", "Worktrees"},
+				[]string{
+					fmt.Sprintf("Branches (%d)", total),
+					fmt.Sprintf("Worktrees (%d)", len(m.worktrees)),
+				},
 				m.branchTab,
-				info+" · v switch",
+				"v switch",
+				contentWidth,
+				hints,
 			)
 			var help string
 			var view string
@@ -436,7 +420,7 @@ func (m model) View() string {
 			if commitLabel == "" {
 				commitLabel = "none"
 			}
-			tabs := renderTabBar([]string{"Commits"}, 0, commitLabel)
+			tabs := renderTabBar([]string{"Commits"}, 0, commitLabel, contentWidth, hints)
 			help := helpBarStyle.Render(" j/k navigate")
 			view := m.renderPanel(panelCommits, innerWidth, contentH)
 			content := view + "\n" + fitWidth(help, innerWidth)
@@ -444,9 +428,17 @@ func (m model) View() string {
 		}
 	}
 
-	sections = append(sections, m.renderBottomBar(contentWidth))
+	if bar := m.renderBottomBar(contentWidth); bar != "" {
+		sections = append(sections, bar)
+	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	result := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	// Pad to fill terminal height
+	lines := strings.Split(result, "\n")
+	for len(lines) < m.height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *model) renderBranches(width, height int) string {
@@ -533,26 +525,63 @@ func (m *model) renderBranches(width, height int) string {
 				syncPad = 0
 			}
 
-			mainPlain := ""
-			if b.mainAhead > 0 || b.mainBehind > 0 {
-				mainPlain = fmt.Sprintf(" main +%d/-%d", b.mainAhead, b.mainBehind)
-			}
-
 			if isSelected || isCursor {
-				plain := prefix + b.name + strings.Repeat(" ", namePad)
-				if maxUpstream > 0 {
-					plain += " " + b.upstream + upstreamPad
-				}
-				if maxSync > 0 {
-					plain += " " + plainSync + strings.Repeat(" ", syncPad)
-				}
-				plain += mainPlain
-				plain = truncate(plain, width)
+				baseStyle := cursorStyle
 				if isSelected {
-					lines = append(lines, selectedStyle.Width(width).Render(plain))
-				} else {
-					lines = append(lines, cursorStyle.Width(width).Render(plain))
+					baseStyle = selectedStyle
 				}
+				bg := baseStyle.GetBackground()
+				fg := baseStyle.GetForeground()
+
+				var nameCol string
+				if b.name == m.currentBranch {
+					dotStyle := lipgloss.NewStyle().Foreground(branchCurrentStyle.GetForeground()).Background(bg)
+					nameStyle := lipgloss.NewStyle().Foreground(fg).Background(bg)
+					nameCol = dotStyle.Render(prefix) + nameStyle.Render(b.name) + nameStyle.Render(strings.Repeat(" ", namePad))
+				} else {
+					seg := lipgloss.NewStyle().Foreground(fg).Background(bg)
+					nameCol = seg.Render(prefix+b.name) + seg.Render(strings.Repeat(" ", namePad))
+				}
+
+				upstreamCol := ""
+				if maxUpstream > 0 {
+					uStyle := lipgloss.NewStyle().Foreground(upstreamStyle.GetForeground()).Background(bg)
+					padStyle := lipgloss.NewStyle().Foreground(fg).Background(bg)
+					upstreamCol = padStyle.Render(" ") + uStyle.Render(b.upstream) + padStyle.Render(upstreamPad)
+				}
+
+				syncCol := ""
+				if maxSync > 0 {
+					padStyle := lipgloss.NewStyle().Foreground(fg).Background(bg)
+					s := ""
+					if b.ahead > 0 {
+						s += lipgloss.NewStyle().Foreground(aheadStyle.GetForeground()).Background(bg).Render(fmt.Sprintf("↑%d", b.ahead))
+					}
+					if b.behind > 0 {
+						s += lipgloss.NewStyle().Foreground(behindStyle.GetForeground()).Background(bg).Render(fmt.Sprintf("↓%d", b.behind))
+					}
+					syncCol = padStyle.Render(" ") + s + padStyle.Render(strings.Repeat(" ", syncPad))
+				}
+
+				mainCol := ""
+				if b.mainAhead > 0 || b.mainBehind > 0 {
+					dimSel := lipgloss.NewStyle().Foreground(dimStyle.GetForeground()).Background(bg)
+					aheadSel := lipgloss.NewStyle().Foreground(aheadStyle.GetForeground()).Background(bg)
+					behindSel := lipgloss.NewStyle().Foreground(behindStyle.GetForeground()).Background(bg)
+					mainCol = dimSel.Render(" main ") +
+						aheadSel.Render(fmt.Sprintf("+%d", b.mainAhead)) +
+						dimSel.Render("/") +
+						behindSel.Render(fmt.Sprintf("-%d", b.mainBehind))
+				}
+
+				content := nameCol + upstreamCol + syncCol + mainCol
+				// Pad remaining width with background
+				padStyle := lipgloss.NewStyle().Background(bg)
+				contentWidth := lipgloss.Width(content)
+				if contentWidth < width {
+					content += padStyle.Render(strings.Repeat(" ", width-contentWidth))
+				}
+				lines = append(lines, content)
 			} else {
 				var nameCol string
 				if b.name == m.currentBranch {
