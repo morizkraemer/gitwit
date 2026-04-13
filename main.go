@@ -27,6 +27,7 @@ func initialModel() model {
 		currentBranch:  cur,
 		activePanel: panelChanges,
 		showPanel:   [3]bool{true, true, true},
+		showRemote:  true,
 	}
 	m.cursors[panelBranches] = cursorIdx
 	m.commits = loadCommits(m.selectedBranch())

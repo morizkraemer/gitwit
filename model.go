@@ -46,6 +46,13 @@ type editorFinishedMsg struct {
 	err error
 }
 
+// mdRenderedMsg is sent when async markdown rendering completes
+type mdRenderedMsg struct {
+	lines []string
+	file  string
+	err   error
+}
+
 type model struct {
 	changes        []changeEntry
 	changesRaw     []string // raw porcelain lines for count
@@ -58,6 +65,7 @@ type model struct {
 	cursors      [3]int
 	offsets      [3]int
 	branchSub    int // 0 = local, 1 = remote
+	showRemote   bool
 	remoteCursor int
 	remoteOffset int
 
@@ -76,6 +84,13 @@ type model struct {
 	diffLines  []string
 	diffFile   string
 	diffScroll int
+
+	// Markdown preview overlay
+	mdMode   bool
+	mdLines  []string
+	mdFile   string
+	mdCursor int
+	mdOffset int
 
 	// Text input mode (e.g. new branch name, commit message)
 	inputMode   bool

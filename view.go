@@ -183,6 +183,63 @@ func (m model) renderDiffView() string {
 		Render(inner)
 }
 
+func (m *model) renderMdView() string {
+	contentWidth := m.width - 2
+	viewHeight := m.height - 4
+
+	title := titleStyle.Render(fmt.Sprintf(" %s ", m.mdFile))
+	help := dimStyle.Render("  q/esc: close · j/k: navigate · d/u: page down/up · e: open in editor")
+
+	if m.mdLines == nil {
+		loading := dimStyle.Render("  Loading...")
+		var pad []string
+		for i := 0; i < viewHeight-1; i++ {
+			pad = append(pad, "")
+		}
+		content := strings.Join(append([]string{loading}, pad...), "\n")
+		inner := lipgloss.JoinVertical(lipgloss.Left, title, content, help)
+		return outerBorderStyle.Width(contentWidth).Height(m.height - 2).Render(inner)
+	}
+
+	// Viewport follows cursor
+	if m.mdCursor < m.mdOffset {
+		m.mdOffset = m.mdCursor
+	}
+	if m.mdCursor >= m.mdOffset+viewHeight {
+		m.mdOffset = m.mdCursor - viewHeight + 1
+	}
+
+	mdMarker := lipgloss.NewStyle().Background(lipgloss.Color("#3d3d5c")).Render(" ")
+
+	var lines []string
+	end := m.mdOffset + viewHeight
+	if end > len(m.mdLines) {
+		end = len(m.mdLines)
+	}
+	for i := m.mdOffset; i < end; i++ {
+		line := m.mdLines[i]
+		if i == m.mdCursor {
+			padWidth := contentWidth - 2 - lipgloss.Width(line) - 2 // -2 for markers
+			if padWidth < 0 {
+				padWidth = 0
+			}
+			lines = append(lines, mdMarker+line+strings.Repeat(" ", padWidth)+mdMarker)
+		} else {
+			lines = append(lines, " "+line)
+		}
+	}
+	for len(lines) < viewHeight {
+		lines = append(lines, "")
+	}
+
+	content := strings.Join(lines, "\n")
+	inner := lipgloss.JoinVertical(lipgloss.Left, title, content, help)
+	return outerBorderStyle.
+		Width(contentWidth).
+		Height(m.height - 2).
+		Render(inner)
+}
+
 func (m model) renderBottomBar(width int) string {
 	bg := lipgloss.Color("#2d2d4a")
 	bar := lipgloss.NewStyle().Background(bg).Width(width)
@@ -232,6 +289,10 @@ func (m model) View() string {
 
 	if m.diffMode {
 		return m.renderDiffView()
+	}
+
+	if m.mdMode {
+		return m.renderMdView()
 	}
 
 	// Outer border eats 2 cols and 2 rows
@@ -312,8 +373,13 @@ func (m model) View() string {
 			sections = append(sections, title, borderFn(p, h).Render(view), help)
 
 		case panelBranches:
-			title := titleStyle.Render(fmt.Sprintf(" Local (%d) │ Remote (%d) ", len(m.branches), len(m.remoteBranches)))
-			help := dimStyle.Render("  h/l: local/remote · enter: checkout · B: new · f: fetch · p: pull · P: push")
+			var title string
+			if m.showRemote {
+				title = titleStyle.Render(fmt.Sprintf(" Local (%d) │ Remote (%d) ", len(m.branches), len(m.remoteBranches)))
+			} else {
+				title = titleStyle.Render(fmt.Sprintf(" Branches (%d) ", len(m.branches)))
+			}
+			help := dimStyle.Render("  h/l: local/remote · enter: checkout · B: new · R: remote · f: fetch · p: pull · P: push")
 			view := m.renderBranchesPanel(innerWidth, h)
 			sections = append(sections, title, borderFn(p, h).Render(view), help)
 
@@ -341,10 +407,15 @@ func (m model) View() string {
 
 func (m *model) renderBranchesPanel(width, height int) string {
 	isActive := m.activePanel == panelBranches
-	leftWidth := width / 2
-	rightWidth := width - leftWidth - 1 // -1 for separator
-	if rightWidth < 1 {
-		rightWidth = 1
+	var leftWidth, rightWidth int
+	if m.showRemote {
+		leftWidth = width / 2
+		rightWidth = width - leftWidth - 1 // -1 for separator
+		if rightWidth < 1 {
+			rightWidth = 1
+		}
+	} else {
+		leftWidth = width
 	}
 	if leftWidth < 1 {
 		leftWidth = 1
@@ -397,6 +468,10 @@ func (m *model) renderBranchesPanel(width, height int) string {
 	}
 	for len(leftLines) < height {
 		leftLines = append(leftLines, strings.Repeat(" ", leftWidth))
+	}
+
+	if !m.showRemote {
+		return strings.Join(leftLines, "\n")
 	}
 
 	// Render remote branches (right side)

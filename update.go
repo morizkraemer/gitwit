@@ -73,8 +73,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.changes = buildChangeTree(raw)
 		return m, nil
 
+	case mdRenderedMsg:
+		if msg.err != nil {
+			m.mdMode = false
+			m.statusMsg = "✗ " + msg.err.Error()
+		} else if msg.file == m.mdFile {
+			m.mdLines = msg.lines
+		}
+		return m, nil
+
 	case tickMsg:
-		if !m.diffMode && !m.inputMode {
+		if !m.diffMode && !m.mdMode && !m.inputMode {
 			m.currentBranch = currentBranch()
 			raw := loadChanges()
 			m.changesRaw = raw
@@ -218,6 +227,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Markdown preview mode keys
+		if m.mdMode {
+			switch msg.String() {
+			case "q", "esc":
+				m.mdMode = false
+				return m, nil
+			case "j", "down":
+				if m.mdCursor < len(m.mdLines)-1 {
+					m.mdCursor++
+				}
+				return m, nil
+			case "k", "up":
+				if m.mdCursor > 0 {
+					m.mdCursor--
+				}
+				return m, nil
+			case "d", "ctrl+d":
+				jump := (m.height - 4) / 2
+				m.mdCursor += jump
+				if m.mdCursor >= len(m.mdLines) {
+					m.mdCursor = max(len(m.mdLines)-1, 0)
+				}
+				return m, nil
+			case "u", "ctrl+u":
+				jump := (m.height - 4) / 2
+				m.mdCursor -= jump
+				if m.mdCursor < 0 {
+					m.mdCursor = 0
+				}
+				return m, nil
+			case "e":
+				if m.mdFile != "" {
+					m.mdMode = false
+					return m, openInEditor(m.mdFile)
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -259,6 +308,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.dirEntries = buildDirTree(m.dirExpanded)
 							if m.dirCursor >= len(m.dirEntries) {
 								m.dirCursor = max(len(m.dirEntries)-1, 0)
+							}
+						} else if strings.HasSuffix(entry.filePath, ".md") {
+							m.mdMode = true
+							m.mdFile = entry.filePath
+							m.mdLines = nil
+							m.mdCursor = 0
+							m.mdOffset = 0
+							width := m.width - 4
+							file := entry.filePath
+							return m, func() tea.Msg {
+								lines, err := renderMarkdown(file, width)
+								return mdRenderedMsg{lines: lines, file: file, err: err}
 							}
 						} else {
 							return m, openInEditor(entry.filePath)
@@ -390,8 +451,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "l", "right":
-			if m.activePanel == panelBranches && m.branchSub == 0 {
+			if m.activePanel == panelBranches && m.branchSub == 0 && m.showRemote {
 				m.branchSub = 1
+			}
+			return m, nil
+
+		case "R":
+			if m.activePanel == panelBranches {
+				m.showRemote = !m.showRemote
+				if !m.showRemote && m.branchSub == 1 {
+					m.branchSub = 0
+				}
 			}
 			return m, nil
 
