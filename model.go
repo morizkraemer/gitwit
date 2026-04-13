@@ -27,10 +27,11 @@ type changeEntry struct {
 
 // branchEntry holds branch name and remote tracking info
 type branchEntry struct {
-	name      string
-	ahead     int
-	behind    int
-	mainAhead int // commits ahead of main
+	name       string
+	upstream   string // e.g. "origin/main"
+	ahead      int
+	behind     int
+	mainAhead  int // commits ahead of main
 	mainBehind int // commits behind main
 }
 

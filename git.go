@@ -52,17 +52,24 @@ func commitsVsMain(mainRef, branch string) (int, int) {
 }
 
 func loadBranches() []branchEntry {
-	raw := git("branch", "--format=%(refname:short)")
+	raw := git("branch", "--format=%(refname:short)\t%(upstream:short)")
 	main := mainBranch()
 	var entries []branchEntry
-	for _, name := range raw {
-		ahead, behind := 0, 0
-		// Check if branch has an upstream
-		ab := git("rev-list", "--left-right", "--count", name+"..."+name+"@{upstream}")
-		if len(ab) > 0 {
-			fmt.Sscanf(ab[0], "%d\t%d", &ahead, &behind)
+	for _, line := range raw {
+		parts := strings.SplitN(line, "\t", 2)
+		name := parts[0]
+		upstream := ""
+		if len(parts) == 2 {
+			upstream = parts[1]
 		}
-		e := branchEntry{name: name, ahead: ahead, behind: behind}
+		ahead, behind := 0, 0
+		if upstream != "" {
+			ab := git("rev-list", "--left-right", "--count", name+"..."+name+"@{upstream}")
+			if len(ab) > 0 {
+				fmt.Sscanf(ab[0], "%d\t%d", &ahead, &behind)
+			}
+		}
+		e := branchEntry{name: name, upstream: upstream, ahead: ahead, behind: behind}
 		if main != "" && name != main {
 			e.mainAhead, e.mainBehind = commitsVsMain(main, name)
 		}
