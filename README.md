@@ -20,11 +20,19 @@ A minimal terminal UI for git — like lazygit, but only the parts you actually 
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install morizkraemer/tap/gitwit
+```
+
+### Go
+
 ```sh
 go install github.com/morizkraemer/gitwit@latest
 ```
 
-Or build from source:
+### From source
 
 ```sh
 git clone https://github.com/morizkraemer/gitwit.git

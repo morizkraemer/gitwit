@@ -1,0 +1,33 @@
+version: 2
+
+builds:
+  - binary: gitwit
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+brews:
+  - repository:
+      owner: morizkraemer
+      name: homebrew-tap
+    homepage: https://github.com/morizkraemer/gitwit
+    description: A minimal terminal UI for git
+    license: MIT
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
