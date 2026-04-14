@@ -379,12 +379,13 @@ func (m model) View() string {
 			if m.dirMode {
 				activeTab = 1
 			}
-			diffInfo := dimStyle.Render("v switch")
+			vSwitch := helpKeyStyle.Render("v") + helpBarStyle.Render(" switch")
+			diffInfo := vSwitch
 			if m.diffAdded > 0 || m.diffRemoved > 0 {
 				diffInfo = aheadStyle.Render(fmt.Sprintf("+%d", m.diffAdded)) +
 					dimStyle.Render("/") +
 					behindStyle.Render(fmt.Sprintf("-%d", m.diffRemoved)) +
-					dimStyle.Render(" · v switch")
+					helpBarStyle.Render(" · ") + vSwitch
 			}
 			tabs := renderTabBar(
 				[]string{
@@ -414,7 +415,7 @@ func (m model) View() string {
 					fmt.Sprintf("Worktrees (%d)", len(m.worktrees)),
 				},
 				m.branchTab,
-				dimStyle.Render("v switch"),
+				helpKeyStyle.Render("v")+helpBarStyle.Render(" switch"),
 				contentWidth,
 				hints,
 			)
@@ -437,9 +438,8 @@ func (m model) View() string {
 				commitLabel = "none"
 			}
 			tabs := renderTabBar([]string{"Commits"}, 0, dimStyle.Render(commitLabel), contentWidth, hints)
-			help := ""
-			view := m.renderPanel(panelCommits, innerWidth, contentH)
-			content := view + "\n" + fitWidth(help, innerWidth)
+			view := m.renderPanel(panelCommits, innerWidth, contentH+1)
+			content := view
 			sections = append(sections, tabs, borderFn(p, h).Render(content))
 		}
 	}
