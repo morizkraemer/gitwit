@@ -401,7 +401,7 @@ func (m model) View() string {
 				help = helpBarStyle.Render(" ⏎ checkout · B new · f fetch · p pull · P push")
 				view = m.renderBranches(innerWidth, contentH)
 			case 1:
-				help = helpBarStyle.Render(" j/k navigate")
+				help = helpBarStyle.Render(" ⏎ show path")
 				view = m.renderWorktrees(innerWidth, contentH)
 			}
 			content := view + "\n" + fitWidth(help, innerWidth)
@@ -413,7 +413,7 @@ func (m model) View() string {
 				commitLabel = "none"
 			}
 			tabs := renderTabBar([]string{"Commits"}, 0, dimStyle.Render(commitLabel), contentWidth, hints)
-			help := helpBarStyle.Render(" j/k navigate")
+			help := helpBarStyle.Render("")
 			view := m.renderPanel(panelCommits, innerWidth, contentH)
 			content := view + "\n" + fitWidth(help, innerWidth)
 			sections = append(sections, tabs, borderFn(p, h).Render(content))
