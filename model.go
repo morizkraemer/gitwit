@@ -105,6 +105,11 @@ type model struct {
 	mdCursor int
 	mdOffset int
 
+	// Confirm mode (e.g. discard changes)
+	confirmMode   bool
+	confirmAction string
+	confirmFile   string
+
 	// Text input mode (e.g. new branch name, commit message)
 	inputMode   bool
 	inputPrompt string

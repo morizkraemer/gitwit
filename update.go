@@ -114,6 +114,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
+		// Confirm mode (y/n)
+		if m.confirmMode {
+			switch msg.String() {
+			case "y":
+				m.confirmMode = false
+				switch m.confirmAction {
+				case "discard":
+					file := m.confirmFile
+					// Check if untracked
+					status := ""
+					for _, c := range m.changes {
+						if c.filePath == file {
+							status = c.status
+							break
+						}
+					}
+					if strings.HasPrefix(status, "?") {
+						// Untracked file — remove it
+						os.Remove(file)
+					} else {
+						// Tracked file — unstage first, then restore
+						exec.Command("git", "reset", "HEAD", "--", file).Run()
+						exec.Command("git", "checkout", "--", file).Run()
+					}
+					m.statusMsg = "Discarded " + file
+					m.reloadChanges()
+					if m.cursors[panelChanges] >= len(m.changes) {
+						m.cursors[panelChanges] = max(len(m.changes)-1, 0)
+					}
+				}
+			case "n", "esc":
+				m.confirmMode = false
+				m.statusMsg = ""
+			}
+			return m, nil
+		}
+
 		// Text input mode
 		if m.inputMode {
 			switch msg.String() {
@@ -476,6 +513,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				entry := m.changes[m.cursors[panelChanges]]
 				if !entry.isDir {
 					return m, openInEditor(entry.filePath)
+				}
+			}
+			return m, nil
+
+		case "d":
+			if m.activePanel == panelChanges && !m.dirMode && len(m.changes) > 0 {
+				entry := m.changes[m.cursors[panelChanges]]
+				if !entry.isDir {
+					m.confirmMode = true
+					m.confirmAction = "discard"
+					m.confirmFile = entry.filePath
+					m.statusMsg = "Discard changes to " + entry.filePath + "? (y/n)"
 				}
 			}
 			return m, nil

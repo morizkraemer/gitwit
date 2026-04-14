@@ -376,7 +376,7 @@ func (m model) View() string {
 			if m.dirMode {
 				help = helpBarStyle.Render(" ⏎ open/toggle")
 			} else {
-				help = helpBarStyle.Render(" spc stage · a all · c commit · ⏎ diff · e edit")
+				help = helpBarStyle.Render(" spc stage · a all · c commit · d discard · ⏎ diff · e edit")
 			}
 			view := m.renderPanel(panelChanges, innerWidth, contentH)
 			content := view + "\n" + fitWidth(help, innerWidth)
