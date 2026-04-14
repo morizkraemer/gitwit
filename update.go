@@ -87,31 +87,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		var cmds []tea.Cmd
+		cmds = append(cmds, tickCmd())
 		if !m.diffMode && !m.mdMode && !m.inputMode {
-			m.currentBranch = currentBranch()
-			m.reloadChanges()
-			m.branches = loadBranches()
-			m.remoteBranches = loadRemoteBranches(m.branches)
-			m.worktrees = loadWorktrees()
-			m.commits = loadCommits(m.selectedBranch())
-			if m.dirMode {
-				m.dirEntries = buildDirTree(m.dirExpanded)
-				if m.dirCursor >= len(m.dirEntries) {
-					m.dirCursor = max(len(m.dirEntries)-1, 0)
+			branch := m.selectedBranch()
+			cmds = append(cmds, func() tea.Msg {
+				cur := currentBranch()
+				raw := loadChanges()
+				added, removed := diffStat()
+				branches := loadBranches()
+				return refreshMsg{
+					currentBranch:  cur,
+					changesRaw:     raw,
+					changes:        buildChangeTree(raw),
+					diffAdded:      added,
+					diffRemoved:    removed,
+					branches:       branches,
+					remoteBranches: loadRemoteBranches(branches),
+					worktrees:      loadWorktrees(),
+					commits:        loadCommits(branch),
 				}
-			}
+			})
 		}
-		if m.statusMsg != "" {
-			if m.statusTick >= 2 {
-				m.statusMsg = ""
-				m.statusTick = 0
+		if !m.confirmMode {
+			if m.statusMsg != "" {
+				if m.statusTick >= 2 {
+					m.statusMsg = ""
+					m.statusTick = 0
+				} else {
+					m.statusTick++
+				}
 			} else {
-				m.statusTick++
+				m.statusTick = 0
 			}
-		} else {
-			m.statusTick = 0
 		}
-		return m, tickCmd()
+		return m, tea.Batch(cmds...)
+
+	case refreshMsg:
+		m.currentBranch = msg.currentBranch
+		m.changesRaw = msg.changesRaw
+		m.changes = msg.changes
+		m.diffAdded = msg.diffAdded
+		m.diffRemoved = msg.diffRemoved
+		m.branches = msg.branches
+		m.remoteBranches = msg.remoteBranches
+		m.worktrees = msg.worktrees
+		m.commits = msg.commits
+		if m.dirMode {
+			m.dirEntries = buildDirTree(m.dirExpanded)
+			if m.dirCursor >= len(m.dirEntries) {
+				m.dirCursor = max(len(m.dirEntries)-1, 0)
+			}
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		// Confirm mode (y/n)

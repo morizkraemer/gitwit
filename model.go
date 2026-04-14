@@ -55,6 +55,19 @@ type editorFinishedMsg struct {
 	err error
 }
 
+// refreshMsg carries async-loaded data back to Update
+type refreshMsg struct {
+	currentBranch  string
+	changesRaw     []string
+	changes        []changeEntry
+	diffAdded      int
+	diffRemoved    int
+	branches       []branchEntry
+	remoteBranches []remoteBranchEntry
+	worktrees      []worktreeEntry
+	commits        []string
+}
+
 // mdRenderedMsg is sent when async markdown rendering completes
 type mdRenderedMsg struct {
 	lines []string
