@@ -106,7 +106,7 @@ func renderTabBar(tabs []string, active int, info string, width int, globalHints
 	if info != "" {
 		left += " " + info
 	}
-	right := dimStyle.Render(globalHints)
+	right := globalHints
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
@@ -352,7 +352,11 @@ func (m model) View() string {
 	}
 
 	// Build layout sections
-	panelKeys := [3]string{"1 select · ! toggle", "2 select · @ toggle", "3 select · # toggle"}
+	panelKeys := [3]string{
+		helpBar("1 select", "! toggle"),
+		helpBar("2 select", "@ toggle"),
+		helpBar("3 select", "# toggle"),
+	}
 	var sections []string
 	for _, p := range visible {
 		hints := panelKeys[p]
@@ -394,9 +398,9 @@ func (m model) View() string {
 			)
 			var help string
 			if m.dirMode {
-				help = helpBar("⏎ open/toggle")
+				help = helpBar("return open/toggle")
 			} else {
-				help = helpBar("space stage", "a all", "c commit", "d discard", "⏎ diff", "e edit")
+				help = helpBar("space stage", "a all", "c commit", "d discard", "return diff", "e edit")
 			}
 			view := m.renderPanel(panelChanges, innerWidth, contentH)
 			content := view + "\n" + fitWidth(help, innerWidth)
@@ -418,10 +422,10 @@ func (m model) View() string {
 			var view string
 			switch m.branchTab {
 			case 0:
-				help = helpBar("⏎ checkout", "B new", "f fetch", "p pull", "P push")
+				help = helpBar("return checkout", "B new", "f fetch", "p pull", "P push")
 				view = m.renderBranches(innerWidth, contentH)
 			case 1:
-				help = helpBar("⏎ show path")
+				help = helpBar("return show path")
 				view = m.renderWorktrees(innerWidth, contentH)
 			}
 			content := view + "\n" + fitWidth(help, innerWidth)
