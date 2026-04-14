@@ -455,17 +455,17 @@ func (m *model) renderBranches(width, height int) string {
 
 	upstreamStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555566"))
 
-	// Measure column widths for local branches
+	// Measure column widths for local branches (display width, not byte count)
 	maxName := 0
 	maxUpstream := 0
 	maxSync := 0
 	for _, b := range m.branches {
-		nameLen := len(b.name) + 2
+		nameLen := lipgloss.Width(b.name) + 2 // +2 for prefix ("● " or "  ")
 		if nameLen > maxName {
 			maxName = nameLen
 		}
-		if len(b.upstream) > maxUpstream {
-			maxUpstream = len(b.upstream)
+		if lipgloss.Width(b.upstream) > maxUpstream {
+			maxUpstream = lipgloss.Width(b.upstream)
 		}
 		sync := ""
 		if b.ahead > 0 {
@@ -474,13 +474,13 @@ func (m *model) renderBranches(width, height int) string {
 		if b.behind > 0 {
 			sync += fmt.Sprintf("↓%d", b.behind)
 		}
-		if len(sync) > maxSync {
-			maxSync = len(sync)
+		if lipgloss.Width(sync) > maxSync {
+			maxSync = lipgloss.Width(sync)
 		}
 	}
 	// Remote branch names also contribute to maxName
 	for _, rb := range m.remoteBranches {
-		nameLen := len(rb.name) + 2
+		nameLen := lipgloss.Width(rb.name) + 2
 		if nameLen > maxName {
 			maxName = nameLen
 		}
@@ -499,14 +499,14 @@ func (m *model) renderBranches(width, height int) string {
 				prefix = "● "
 			}
 
-			namePad := maxName - len(prefix) - len(b.name)
+			namePad := maxName - lipgloss.Width(prefix) - lipgloss.Width(b.name)
 			if namePad < 0 {
 				namePad = 0
 			}
 
 			upstreamPad := ""
 			if maxUpstream > 0 {
-				pad := maxUpstream - len(b.upstream)
+				pad := maxUpstream - lipgloss.Width(b.upstream)
 				if pad < 0 {
 					pad = 0
 				}
@@ -520,7 +520,7 @@ func (m *model) renderBranches(width, height int) string {
 			if b.behind > 0 {
 				plainSync += fmt.Sprintf("↓%d", b.behind)
 			}
-			syncPad := maxSync - len(plainSync)
+			syncPad := maxSync - lipgloss.Width(plainSync)
 			if syncPad < 0 {
 				syncPad = 0
 			}
