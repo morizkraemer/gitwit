@@ -480,6 +480,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.worktrees = loadWorktrees()
 				m.commits = loadCommits(m.selectedBranch())
 				return m, nil
+
+			case panelCommits:
+				idx := m.cursors[panelCommits]
+				if len(m.commits) > 0 && idx < len(m.commits) {
+					if m.expandedCommit == idx {
+						m.expandedCommit = -1
+						m.commitDetail = nil
+					} else {
+						hash := strings.SplitN(m.commits[idx], " ", 2)[0]
+						m.expandedCommit = idx
+						m.commitDetail = loadCommitDetail(hash)
+					}
+				}
+				return m, nil
 			}
 			return m, nil
 
@@ -584,6 +598,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "d":
+			if m.activePanel == panelCommits && m.expandedCommit >= 0 {
+				hash := strings.SplitN(m.commits[m.expandedCommit], " ", 2)[0]
+				m.diffLines = git("show", "--patch", hash)
+				m.diffFile = hash
+				m.diffScroll = 0
+				m.diffMode = true
+				return m, nil
+			}
 			if m.activePanel == panelChanges && !m.dirMode && len(m.changes) > 0 {
 				entry := m.changes[m.cursors[panelChanges]]
 				if !entry.isDir {

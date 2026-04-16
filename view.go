@@ -438,8 +438,9 @@ func (m model) View() string {
 				commitLabel = "none"
 			}
 			tabs := renderTabBar([]string{"Commits"}, 0, dimStyle.Render(commitLabel), contentWidth, hints)
-			view := m.renderPanel(panelCommits, innerWidth, contentH+1)
-			content := view
+			help := helpBar("return expand", "d diff")
+			view := m.renderPanel(panelCommits, innerWidth, contentH)
+			content := view + "\n" + fitWidth(help, innerWidth)
 			sections = append(sections, tabs, borderFn(p, h).Render(content))
 		}
 	}
@@ -748,7 +749,7 @@ func (m *model) renderPanel(panel, width, height int) string {
 	}
 
 	var lines []string
-	for i := *offset; i < len(items) && i < *offset+height; i++ {
+	for i := *offset; i < len(items) && len(lines) < height; i++ {
 		line := truncate(items[i], width)
 		isSelected := i == cursor && panel == m.activePanel
 		isCursor := i == cursor && !isSelected
@@ -778,6 +779,18 @@ func (m *model) renderPanel(panel, width, height int) string {
 			}
 		}
 		lines = append(lines, rendered)
+
+		// Inline commit detail expansion
+		if panel == panelCommits && i == m.expandedCommit && m.commitDetail != nil {
+			for _, dl := range m.commitDetail {
+				if len(lines) >= height {
+					break
+				}
+				dl = truncate(dl, width-2)
+				styled := dimStyle.Render("  " + dl)
+				lines = append(lines, fitWidth(styled, width))
+			}
+		}
 	}
 
 	// Pad remaining lines

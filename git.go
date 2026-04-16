@@ -209,3 +209,8 @@ func loadCommits(branch string) []string {
 	}
 	return git("log", branch, "--oneline", "-30")
 }
+
+func loadCommitDetail(hash string) []string {
+	return git("show", "--stat", "--no-patch", hash)
+}
+

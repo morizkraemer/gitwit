@@ -118,6 +118,10 @@ type model struct {
 	mdCursor int
 	mdOffset int
 
+	// Commit detail (inline expansion)
+	expandedCommit int // index of expanded commit, -1 = none
+	commitDetail   []string
+
 	// Confirm mode (e.g. discard changes)
 	confirmMode   bool
 	confirmAction string
