@@ -675,31 +675,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commits = loadCommits(m.selectedBranch())
 			return m, nil
 
-		case "v":
-			if m.activePanel == panelChanges {
-				m.changesTab = (m.changesTab + 1) % 3
-				if m.changesTab == 1 {
+		case "1", "2", "3":
+			tab := int(msg.String()[0] - '1')
+			switch m.activePanel {
+			case panelChanges:
+				if tab > 2 {
+					return m, nil
+				}
+				m.changesTab = tab
+				if tab == 1 {
 					if m.dirExpanded == nil {
 						m.dirExpanded = make(map[string]bool)
 					}
 					m.dirEntries = buildDirTree(m.dirExpanded)
 					m.dirCursor = 0
 					m.dirOffset = 0
-				} else if m.changesTab == 2 {
+				} else if tab == 2 {
 					m.mainDiffFiles = loadMainDiff()
 					m.mainDiffCursor = 0
 					m.mainDiffOffset = 0
 				}
-			} else if m.activePanel == panelBranches {
-				m.branchTab = (m.branchTab + 1) % 2
-			}
-			return m, nil
-
-		case "1", "2", "3":
-			panel := int(msg.String()[0] - '1')
-			if m.showPanel[panel] {
-				m.activePanel = panel
-				m.statusMsg = ""
+			case panelBranches:
+				if tab > 1 {
+					return m, nil
+				}
+				m.branchTab = tab
 			}
 			return m, nil
 

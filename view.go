@@ -360,9 +360,9 @@ func (m model) View() string {
 
 	// Build layout sections
 	panelKeys := [3]string{
-		helpBar("1 select", "! toggle"),
-		helpBar("2 select", "@ toggle"),
-		helpBar("3 select", "# toggle"),
+		helpBar("1-3 tab", "! toggle"),
+		helpBar("1-2 tab", "@ toggle"),
+		helpBar("# toggle"),
 	}
 	var sections []string
 	for _, p := range visible {
@@ -382,13 +382,11 @@ func (m model) View() string {
 					stagedCount++
 				}
 			}
-			vSwitch := helpKeyStyle.Render("v") + helpBarStyle.Render(" switch")
-			diffInfo := vSwitch
+			diffInfo := ""
 			if m.diffAdded > 0 || m.diffRemoved > 0 {
 				diffInfo = aheadStyle.Render(fmt.Sprintf("+%d", m.diffAdded)) +
 					dimStyle.Render("/") +
-					behindStyle.Render(fmt.Sprintf("-%d", m.diffRemoved)) +
-					helpBarStyle.Render(" · ") + vSwitch
+					behindStyle.Render(fmt.Sprintf("-%d", m.diffRemoved))
 			}
 			tabs := renderTabBar(
 				[]string{
@@ -425,7 +423,7 @@ func (m model) View() string {
 					fmt.Sprintf("Worktrees (%d)", len(m.worktrees)),
 				},
 				m.branchTab,
-				helpKeyStyle.Render("v")+helpBarStyle.Render(" switch"),
+				"",
 				contentWidth,
 				hints,
 			)
